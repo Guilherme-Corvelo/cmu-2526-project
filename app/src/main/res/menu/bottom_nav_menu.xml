@@ -1,15 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- res/menu/bottom_nav_menu.xml -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
+
     <item
         android:id="@+id/homeFragment"
-        android:icon="@android:drawable/ic_menu_today"
-        android:title="Home" />
+        android:icon="@android:drawable/ic_menu_search"
+        android:title="Find Ride"/>
+
     <item
         android:id="@+id/myRidesFragment"
-        android:icon="@android:drawable/ic_menu_mylocation"
-        android:title="My Rides" />
+        android:icon="@android:drawable/ic_menu_directions"
+        android:title="My Rides"/>
+
     <item
         android:id="@+id/profileFragment"
-        android:icon="@android:drawable/ic_menu_manage"
-        android:title="Profile" />
+        android:icon="@android:drawable/ic_menu_myplaces"
+        android:title="Profile"/>
+
 </menu>
