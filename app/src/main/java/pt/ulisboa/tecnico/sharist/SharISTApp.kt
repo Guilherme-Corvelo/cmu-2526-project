@@ -22,6 +22,11 @@ import pt.ulisboa.tecnico.sharist.utils.NetworkMonitor
 
 class SharISTApp : Application() {
 
+    companion object {
+        // Temporary flag for client testing while backend DB is offline.
+        private const val FORCE_DEMO_MODE = true
+    }
+
     val networkMonitor by lazy { NetworkMonitor(this) }
 
     private val db by lazy { SharISTDatabase.getInstance(this) }
@@ -37,7 +42,10 @@ class SharISTApp : Application() {
             false
         }
 
-        if (hasConfig) {
+        if (FORCE_DEMO_MODE) {
+            Log.w("SharISTApp", "Running in DEMO mode with MockRemoteDataSource.")
+            MockRemoteDataSource()
+        } else if (hasConfig) {
             try {
                 FirebaseApp.initializeApp(this)
                 FirebaseDataSource(
