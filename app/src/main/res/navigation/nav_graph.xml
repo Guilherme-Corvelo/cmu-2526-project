@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- res/navigation/nav_graph.xml -->
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/nav_graph"
@@ -7,31 +8,29 @@
     <fragment
         android:id="@+id/homeFragment"
         android:name="pt.ulisboa.tecnico.sharist.ui.home.HomeFragment"
-        android:label="Home"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:label="Home">
         <action
             android:id="@+id/action_home_to_ride_detail"
-            app:destination="@id/rideDetailActivity" />
+            app:destination="@id/rideDetailActivity"/>
     </fragment>
 
     <fragment
         android:id="@+id/myRidesFragment"
-        android:name="pt.ulisboa.tecnico.sharist.ui.rides.MyRidesFragment"
-        android:label="My Rides" />
+        android:name="pt.ulisboa.tecnico.sharist.ui.driver.MyRidesFragment"
+        android:label="My Rides"/>
 
     <fragment
         android:id="@+id/profileFragment"
         android:name="pt.ulisboa.tecnico.sharist.ui.profile.ProfileFragment"
-        android:label="Profile" />
+        android:label="Profile"/>
 
     <activity
         android:id="@+id/rideDetailActivity"
         android:name="pt.ulisboa.tecnico.sharist.ui.ride.RideDetailActivity"
         android:label="Ride Detail">
         <argument
-            android:name="RIDE_ID"
-            app:argType="string" />
+            android:name="rideId"
+            app:argType="string"/>
     </activity>
 
 </navigation>
