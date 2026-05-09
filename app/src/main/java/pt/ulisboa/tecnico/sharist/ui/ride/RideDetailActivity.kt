@@ -34,6 +34,10 @@ class RideDetailViewModel(
 
     private val _bookingState = MutableStateFlow<BookingState>(BookingState.Idle)
     val bookingState: StateFlow<BookingState> = _bookingState.asStateFlow()
+    private val _pendingBookings = MutableStateFlow<List<Booking>>(emptyList())
+    val pendingBookings: StateFlow<List<Booking>> = _pendingBookings.asStateFlow()
+    private val _isCurrentUserDriver = MutableStateFlow(false)
+    val isCurrentUserDriver: StateFlow<Boolean> = _isCurrentUserDriver.asStateFlow()
 
     sealed class BookingState {
         object Idle    : BookingState()
@@ -44,8 +48,17 @@ class RideDetailViewModel(
 
     fun loadRide(rideId: String) {
         viewModelScope.launch {
+            userRepo.currentUid?.let { uid ->
+                _isCurrentUserDriver.value = userRepo.getUser(uid)?.isDriver == true
+            }
             val ride = rideRepo.getRide(rideId) ?: return@launch
             _ride.value = ride
+            val uid = userRepo.currentUid
+            if (uid != null && ride.driverId == uid) {
+                rideRepo.getRideBookings(ride.id)
+                    .map { bookings -> bookings.filter { it.status == BookingStatus.PENDING } }
+                    .collect { _pendingBookings.value = it }
+            }
             checkWeather(ride)
         }
     }
@@ -88,6 +101,19 @@ class RideDetailViewModel(
                 }
         }
     }
+
+    fun respondToBooking(bookingId: String, accepted: Boolean) {
+        viewModelScope.launch {
+            runCatching {
+                rideRepo.updateBookingStatus(
+                    bookingId,
+                    if (accepted) BookingStatus.ACCEPTED else BookingStatus.REJECTED
+                )
+            }.onFailure {
+                _bookingState.value = BookingState.Error(it.message ?: "Could not update booking")
+            }
+        }
+    }
 }
 
 // ─── Activity ─────────────────────────────────────────────────────────────────
@@ -114,6 +140,10 @@ class RideDetailActivity : AppCompatActivity() {
     private lateinit var tvSeats: TextView
     private lateinit var tvPrice: TextView
     private lateinit var tvWeatherWarning: TextView
+    private lateinit var tvRequests: TextView
+    private lateinit var layoutRequestActions: LinearLayout
+    private lateinit var btnAcceptRequest: Button
+    private lateinit var btnRejectRequest: Button
     private lateinit var btnBook: Button
     private lateinit var progressBar: ProgressBar
 
@@ -139,6 +169,10 @@ class RideDetailActivity : AppCompatActivity() {
         tvSeats          = findViewById(R.id.tv_seats)
         tvPrice          = findViewById(R.id.tv_price)
         tvWeatherWarning = findViewById(R.id.tv_weather_warning)
+        tvRequests       = findViewById(R.id.tv_requests)
+        layoutRequestActions = findViewById(R.id.layout_request_actions)
+        btnAcceptRequest = findViewById(R.id.btn_accept_request)
+        btnRejectRequest = findViewById(R.id.btn_reject_request)
         btnBook          = findViewById(R.id.btn_book)
         progressBar      = findViewById(R.id.progress_bar)
     }
@@ -149,6 +183,31 @@ class RideDetailActivity : AppCompatActivity() {
 
                 launch {
                     viewModel.ride.filterNotNull().collect { ride -> populateUI(ride, rideId) }
+                }
+                launch {
+                    viewModel.isCurrentUserDriver.collect { isDriver ->
+                        if (isDriver) {
+                            btnBook.isEnabled = false
+                            btnBook.text = "Drivers cannot request rides"
+                        } else {
+                            btnBook.text = "Request ride"
+                        }
+                    }
+                }
+                launch {
+                    viewModel.pendingBookings.collect { requests ->
+                        if (!viewModel.isCurrentUserDriver.value || requests.isEmpty()) {
+                            tvRequests.visibility = View.GONE
+                            layoutRequestActions.visibility = View.GONE
+                        } else {
+                            val first = requests.first()
+                            tvRequests.visibility = View.VISIBLE
+                            layoutRequestActions.visibility = View.VISIBLE
+                            tvRequests.text = "Pending request: ${first.passengerName} (${first.seatsRequested} seat)"
+                            btnAcceptRequest.setOnClickListener { viewModel.respondToBooking(first.id, true) }
+                            btnRejectRequest.setOnClickListener { viewModel.respondToBooking(first.id, false) }
+                        }
+                    }
                 }
 
                 launch {
@@ -206,7 +265,7 @@ class RideDetailActivity : AppCompatActivity() {
             network     = app.networkMonitor
         )
 
-        btnBook.isEnabled = ride.seatsAvailable > 0
+        btnBook.isEnabled = ride.seatsAvailable > 0 && !viewModel.isCurrentUserDriver.value
         btnBook.setOnClickListener {
             if (ride.seatsAvailable > 0) viewModel.bookRide(rideId, seats = 1)
         }

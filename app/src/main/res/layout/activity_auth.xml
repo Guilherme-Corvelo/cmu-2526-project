@@ -72,6 +72,29 @@
                 android:inputType="textPassword"/>
         </com.google.android.material.textfield.TextInputLayout>
 
+        <RadioGroup
+            android:id="@+id/radio_login_role"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
+
+            <RadioButton
+                android:id="@+id/radio_login_client"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:checked="true"
+                android:text="Login as client"/>
+
+            <RadioButton
+                android:id="@+id/radio_login_driver"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Login as driver"/>
+        </RadioGroup>
+
         <!-- Register-only fields -->
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/til_name"
