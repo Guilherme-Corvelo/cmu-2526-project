@@ -100,6 +100,10 @@ class AuthActivity : AppCompatActivity() {
     private lateinit var radioLoginRole: RadioGroup
     private lateinit var radioLoginDriver: RadioButton
     private lateinit var btnSubmit: Button
+    private lateinit var btnDemoClient: Button
+    private lateinit var btnDemoDriver: Button
+    private lateinit var layoutDemoButtons: LinearLayout
+    private lateinit var tvDemoHint: TextView
     private lateinit var tvError: TextView
     private lateinit var progressBar: ProgressBar
 
@@ -112,6 +116,8 @@ class AuthActivity : AppCompatActivity() {
         setupTabs()
 
         btnSubmit.setOnClickListener { onSubmit() }
+        btnDemoClient.setOnClickListener { loginDemo(isDriver = false) }
+        btnDemoDriver.setOnClickListener { loginDemo(isDriver = true) }
     }
 
     private fun bindViews() {
@@ -124,6 +130,10 @@ class AuthActivity : AppCompatActivity() {
         radioLoginRole = findViewById(R.id.radio_login_role)
         radioLoginDriver = findViewById(R.id.radio_login_driver)
         btnSubmit   = findViewById(R.id.btn_submit)
+        btnDemoClient = findViewById(R.id.btn_demo_client)
+        btnDemoDriver = findViewById(R.id.btn_demo_driver)
+        layoutDemoButtons = findViewById(R.id.layout_demo_buttons)
+        tvDemoHint = findViewById(R.id.tv_demo_hint)
         tvError     = findViewById(R.id.tv_error)
         progressBar = findViewById(R.id.progress_bar)
     }
@@ -139,6 +149,8 @@ class AuthActivity : AppCompatActivity() {
                 switchDriver.visibility = View.GONE
                 radioLoginRole.visibility = View.VISIBLE
                 btnSubmit.text = "Sign in"
+                layoutDemoButtons.visibility = View.GONE
+                tvDemoHint.visibility = View.GONE
             } else {
                 tabLogin.alpha = 0.5f
                 tabRegister.alpha = 1.0f
@@ -146,6 +158,8 @@ class AuthActivity : AppCompatActivity() {
                 switchDriver.visibility = View.VISIBLE
                 radioLoginRole.visibility = View.GONE
                 btnSubmit.text = "Create account"
+                layoutDemoButtons.visibility = View.VISIBLE
+                tvDemoHint.visibility = View.VISIBLE
             }
             tvError.visibility = View.GONE
         }
@@ -175,6 +189,11 @@ class AuthActivity : AppCompatActivity() {
                 isDriver   = switchDriver.isChecked
             )
         }
+    }
+
+    private fun loginDemo(isDriver: Boolean) {
+        val email = if (isDriver) "driver@demo.app" else "client@demo.app"
+        viewModel.signIn(email = email, password = "demo", loginAsDriver = isDriver)
     }
 
     private fun observeState() {
