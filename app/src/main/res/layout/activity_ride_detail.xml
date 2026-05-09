@@ -112,6 +112,37 @@
             android:visibility="gone"
             android:layout_marginBottom="16dp"/>
 
+        <TextView
+            android:id="@+id/tv_requests"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp"
+            android:textStyle="bold"
+            android:text="Pending request"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:id="@+id/layout_request_actions">
+
+            <Button
+                android:id="@+id/btn_accept_request"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Accept"/>
+
+            <Button
+                android:id="@+id/btn_reject_request"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Reject"/>
+        </LinearLayout>
+
         <Button
             android:id="@+id/btn_book"
             android:layout_width="match_parent"

@@ -27,14 +27,22 @@ class AuthViewModel(private val userRepo: UserRepository) : ViewModel() {
     private val _state = MutableLiveData<AuthState>(AuthState.Idle)
     val state: LiveData<AuthState> = _state
 
-    fun signIn(email: String, password: String) {
+    fun signIn(email: String, password: String, loginAsDriver: Boolean) {
         _state.value = AuthState.Loading
         viewModelScope.launch {
             runCatching { userRepo.signIn(email, password) }
                 .onSuccess { result ->
                     val uid = result?.user?.uid ?: userRepo.currentUid
                     if (uid != null) {
-                        _state.value = AuthState.Success(uid)
+                        val user = userRepo.getUser(uid)
+                        if (user == null) {
+                            _state.value = AuthState.Error("User profile not found")
+                        } else if (user.isDriver != loginAsDriver) {
+                            val expectedRole = if (loginAsDriver) "driver" else "client"
+                            _state.value = AuthState.Error("This account is not registered as $expectedRole")
+                        } else {
+                            _state.value = AuthState.Success(uid)
+                        }
                     } else {
                         _state.value = AuthState.Error("Login failed: Invalid credentials")
                     }
@@ -89,6 +97,8 @@ class AuthActivity : AppCompatActivity() {
     private lateinit var etPassword: EditText
     private lateinit var etName: EditText
     private lateinit var switchDriver: Switch
+    private lateinit var radioLoginRole: RadioGroup
+    private lateinit var radioLoginDriver: RadioButton
     private lateinit var btnSubmit: Button
     private lateinit var tvError: TextView
     private lateinit var progressBar: ProgressBar
@@ -111,6 +121,8 @@ class AuthActivity : AppCompatActivity() {
         etPassword  = findViewById(R.id.et_password)
         etName      = findViewById(R.id.et_name)
         switchDriver = findViewById(R.id.switch_driver)
+        radioLoginRole = findViewById(R.id.radio_login_role)
+        radioLoginDriver = findViewById(R.id.radio_login_driver)
         btnSubmit   = findViewById(R.id.btn_submit)
         tvError     = findViewById(R.id.tv_error)
         progressBar = findViewById(R.id.progress_bar)
@@ -125,12 +137,14 @@ class AuthActivity : AppCompatActivity() {
                 tabRegister.alpha = 0.5f
                 etName.visibility = View.GONE
                 switchDriver.visibility = View.GONE
+                radioLoginRole.visibility = View.VISIBLE
                 btnSubmit.text = "Sign in"
             } else {
                 tabLogin.alpha = 0.5f
                 tabRegister.alpha = 1.0f
                 etName.visibility = View.VISIBLE
                 switchDriver.visibility = View.VISIBLE
+                radioLoginRole.visibility = View.GONE
                 btnSubmit.text = "Create account"
             }
             tvError.visibility = View.GONE
@@ -151,7 +165,8 @@ class AuthActivity : AppCompatActivity() {
         val email    = etEmail.text.toString().trim()
         val password = etPassword.text.toString()
         if (isLoginMode) {
-            viewModel.signIn(email, password)
+            val loginAsDriver = radioLoginRole.checkedRadioButtonId == R.id.radio_login_driver
+            viewModel.signIn(email, password, loginAsDriver)
         } else {
             viewModel.register(
                 email      = email,
