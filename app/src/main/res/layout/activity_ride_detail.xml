@@ -9,67 +9,115 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <!-- Car photo -->
         <ImageView
             android:id="@+id/iv_car_photo"
             android:layout_width="match_parent"
             android:layout_height="200dp"
-            android:scaleType="centerCrop" />
+            android:scaleType="centerCrop"
+            android:background="#EEEEEE"
+            android:src="@android:drawable/ic_menu_directions"
+            android:layout_marginBottom="16dp"/>
 
-        <TextView
-            android:id="@+id/tv_driver_name"
-            android:layout_width="wrap_content"
+        <!-- Driver info -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
 
-        <TextView
-            android:id="@+id/tv_rating"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            <TextView
+                android:id="@+id/tv_driver_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:text="Driver Name"/>
+
+            <TextView
+                android:id="@+id/tv_rating"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#F9A825"
+                android:textSize="16sp"
+                android:text="★ 5.0"/>
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tv_route"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textSize="18sp" />
+            android:textSize="16sp"
+            android:layout_marginBottom="8dp"
+            android:text="Origin → Destination"/>
 
         <TextView
             android:id="@+id/tv_departure"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-        <TextView
-            android:id="@+id/tv_seats"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-        <TextView
-            android:id="@+id/tv_price"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tv_weather_warning"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#FF0000"
-            android:visibility="gone" />
-
-        <Button
-            android:id="@+id/btn_book"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Book Now" />
+            android:textSize="14sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="8dp"
+            android:text="Mon, 01 Jan 2026  09:00"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:id="@+id/tv_seats"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="3 of 4 seats available"/>
+
+            <TextView
+                android:id="@+id/tv_price"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#1976D2"
+                android:text="€5.00 per seat"/>
+        </LinearLayout>
+
+        <!-- Weather warning banner -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/tv_weather_warning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            app:cardBackgroundColor="#FFF3CD">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/tv_weather_text"
+                android:padding="12dp"
+                android:text="⚠ This ride may be cancelled due to weather conditions"
+                android:textColor="#856404"/>
+        </com.google.android.material.card.MaterialCardView>
 
         <ProgressBar
             android:id="@+id/progress_bar"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:visibility="gone" />
+            android:visibility="gone"
+            android:layout_marginBottom="16dp"/>
+
+        <Button
+            android:id="@+id/btn_book"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Book this ride"
+            android:padding="16dp"/>
 
     </LinearLayout>
 </ScrollView>
