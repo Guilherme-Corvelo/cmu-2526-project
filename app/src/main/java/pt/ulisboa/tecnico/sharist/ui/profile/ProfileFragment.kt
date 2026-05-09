@@ -6,12 +6,17 @@ import android.view.*
 import android.widget.Button
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import com.google.firebase.auth.FirebaseAuth
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.ui.auth.AuthActivity
 
 class ProfileFragment : Fragment() {
+
+    private val userRepo by lazy {
+        (requireActivity().application as SharISTApp).userRepository
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -23,10 +28,18 @@ class ProfileFragment : Fragment() {
         val tvEmail  = view.findViewById<TextView>(R.id.tv_email)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
 
-        tvEmail.text = FirebaseAuth.getInstance().currentUser?.email ?: "Not logged in"
+        val uid = userRepo.currentUid
+        if (uid != null) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val user = userRepo.getUser(uid)
+                tvEmail.text = user?.email ?: getString(R.string.unknown_email)
+            }
+        } else {
+            tvEmail.text = getString(R.string.not_logged_in)
+        }
 
         btnLogout.setOnClickListener {
-            FirebaseAuth.getInstance().signOut()
+            userRepo.signOut()
             startActivity(Intent(requireContext(), AuthActivity::class.java))
             requireActivity().finish()
         }

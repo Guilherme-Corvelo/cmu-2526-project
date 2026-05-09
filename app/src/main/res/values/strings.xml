@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">cmu2526</string>
+    <string name="app_name">SharIST</string>
+    <string name="not_logged_in">Not logged in</string>
+    <string name="unknown_email">Unknown email</string>
 </resources>

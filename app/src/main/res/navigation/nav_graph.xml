@@ -16,7 +16,7 @@
 
     <fragment
         android:id="@+id/myRidesFragment"
-        android:name="pt.ulisboa.tecnico.sharist.ui.driver.MyRidesFragment"
+        android:name="pt.ulisboa.tecnico.sharist.ui.rides.MyRidesFragment"
         android:label="My Rides"/>
 
     <fragment

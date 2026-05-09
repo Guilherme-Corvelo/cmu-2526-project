@@ -11,7 +11,7 @@
         android:label="SharIST"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.Cmu2526">
 
         <!-- Entry point -->
         <activity
@@ -23,13 +23,14 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".ui.MainActivity"
+        <activity android:name=".MainActivity"
             android:exported="false"/>
         <activity android:name=".ui.auth.AuthActivity"
             android:exported="false"/>
         <activity android:name=".ui.ride.RideDetailActivity"
             android:exported="false"/>
-        <activity android:name=".ui.driver.CreateRideActivity"
+        <activity android:name=".ui.rides.CreateRideActivity"
+            android:label="Post a Ride"
             android:exported="false"/>
 
     </application>
