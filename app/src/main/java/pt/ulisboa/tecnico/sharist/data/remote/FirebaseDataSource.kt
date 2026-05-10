@@ -3,117 +3,71 @@ package pt.ulisboa.tecnico.sharist.data.remote
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.snapshots
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import pt.ulisboa.tecnico.sharist.data.model.*
 
 class FirebaseDataSource(
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
+    val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
-) : RemoteDataSource {
+) {
+    private val requestsCol = db.collection("ride_requests")
+    private val usersCol = db.collection("users")
+    private val reviewsCol = db.collection("reviews")
+    val currentUid: String? get() = auth.currentUser?.uid
 
-    override val currentUid: String? get() = auth.currentUser?.uid
+    suspend fun signIn(email: String, password: String) = auth.signInWithEmailAndPassword(email, password).await()
+    suspend fun register(email: String, password: String) = auth.createUserWithEmailAndPassword(email, password).await()
+    fun signOut() = auth.signOut()
+    suspend fun createUserProfile(user: User) = usersCol.document(user.uid).set(user).await()
+    suspend fun getUser(uid: String): User? = usersCol.document(uid).get().await().toObject(User::class.java)
 
-    // ── Auth ──────────────────────────────────────────────────────────────────
-
-    override suspend fun signIn(email: String, pass: String) =
-        auth.signInWithEmailAndPassword(email, pass).await()
-
-    override suspend fun register(email: String, pass: String) =
-        auth.createUserWithEmailAndPassword(email, pass).await()
-
-    override fun signOut() = auth.signOut()
-
-    // ── User Profiles ─────────────────────────────────────────────────────────
-
-    override suspend fun createUserProfile(user: User) {
-        db.collection("users").document(user.uid).set(user).await()
+    suspend fun updateBalance(uid: String, delta: Double) {
+        db.runTransaction { tx ->
+            val ref = usersCol.document(uid)
+            val current = tx.get(ref).toObject(User::class.java)?.balance ?: 0.0
+            tx.update(ref, "balance", current + delta)
+        }.await()
     }
 
-    override suspend fun getUser(uid: String): User? =
-        db.collection("users").document(uid).get().await().toObject(User::class.java)
-
-    override suspend fun updateBalance(uid: String, delta: Double) {
-        db.collection("users").document(uid)
-            .update("balance", FieldValue.increment(delta))
-            .await()
+    fun observeOpenRequests(): Flow<List<RideRequest>> = callbackFlow {
+        val listener = requestsCol.whereEqualTo("status", RequestStatus.OPEN.name)
+            .orderBy("requestedTime", Query.Direction.ASCENDING).limit(50)
+            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(RideRequest::class.java) ?: emptyList()) }
+        awaitClose { listener.remove() }
     }
 
-    override suspend fun submitReview(review: Review) {
-        db.collection("reviews").add(review).await()
+    fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>> = callbackFlow {
+        val listener = requestsCol.whereEqualTo("passengerId", passengerId)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(RideRequest::class.java) ?: emptyList()) }
+        awaitClose { listener.remove() }
     }
 
-    // ── Rides ─────────────────────────────────────────────────────────────────
-
-    override fun observeRides(filter: RideFilter): Flow<List<Ride>> {
-        var query: Query = db.collection("rides")
-
-        filter.origin.takeIf { it.isNotBlank() }?.let {
-            query = query.whereEqualTo("origin", it)
-        }
-        filter.destination.takeIf { it.isNotBlank() }?.let {
-            query = query.whereEqualTo("destination", it)
-        }
-        filter.maxPrice?.let {
-            query = query.whereLessThanOrEqualTo("pricePerSeat", it)
-        }
-
-        return query.snapshots().map { snapshot ->
-            snapshot.toObjects(Ride::class.java).filter { ride ->
-                ride.seatsAvailable >= filter.minSeats
-            }
-        }
+    fun observeDriverRequests(driverId: String): Flow<List<RideRequest>> = callbackFlow {
+        val listener = requestsCol.whereEqualTo("driverId", driverId)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(RideRequest::class.java) ?: emptyList()) }
+        awaitClose { listener.remove() }
     }
 
-    override suspend fun getRide(rideId: String): Ride? =
-        db.collection("rides").document(rideId).get().await().toObject(Ride::class.java)
+    suspend fun createRequest(request: RideRequest): String { val ref = requestsCol.document(); ref.set(request).await(); return ref.id }
+    suspend fun cancelRequest(requestId: String) { requestsCol.document(requestId).update("status", RequestStatus.CANCELLED.name).await() }
+    suspend fun completeRequest(requestId: String) { requestsCol.document(requestId).update("status", RequestStatus.COMPLETED.name).await() }
 
-    override fun observeDriverRides(driverId: String): Flow<List<Ride>> =
-        db.collection("rides")
-            .whereEqualTo("driverId", driverId)
-            .snapshots()
-            .map { it.toObjects(Ride::class.java) }
-
-    override suspend fun createRide(ride: Ride): String {
-        val doc = db.collection("rides").document()
-        val rideWithId = ride.copy(id = doc.id)
-        doc.set(rideWithId).await()
-        return doc.id
+    suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
+        db.runTransaction { tx ->
+            val ref = requestsCol.document(requestId)
+            val req = tx.get(ref).toObject(RideRequest::class.java) ?: error("Request not found")
+            if (req.status != RequestStatus.OPEN) error("Request already taken")
+            tx.update(ref, mapOf("status" to RequestStatus.ACCEPTED.name, "driverId" to driverId, "driverName" to driverName, "driverRating" to driverRating))
+        }.await()
     }
 
-    override suspend fun decrementSeat(rideId: String) {
-        db.collection("rides").document(rideId)
-            .update("seatsAvailable", FieldValue.increment(-1))
-            .await()
+    suspend fun submitReview(review: Review) {
+        val ref = reviewsCol.document(); ref.set(review).await()
+        requestsCol.document(review.requestId).update("reviewed", true).await()
     }
-
-    // ── Bookings ──────────────────────────────────────────────────────────────
-
-    override suspend fun createBooking(booking: Booking): String {
-        val doc = db.collection("bookings").document()
-        val bookingWithId = booking.copy(id = doc.id)
-        doc.set(bookingWithId).await()
-        return doc.id
-    }
-
-    override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) {
-        db.collection("bookings").document(bookingId)
-            .update("status", status)
-            .await()
-    }
-
-    override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> =
-        db.collection("bookings")
-            .whereEqualTo("passengerId", passengerId)
-            .snapshots()
-            .map { it.toObjects(Booking::class.java) }
-
-    override fun observeRideBookings(rideId: String): Flow<List<Booking>> =
-        db.collection("bookings")
-            .whereEqualTo("rideId", rideId)
-            .snapshots()
-            .map { it.toObjects(Booking::class.java) }
 }
