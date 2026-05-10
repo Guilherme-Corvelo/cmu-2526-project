@@ -45,7 +45,94 @@ data class Review(
     @ServerTimestamp val createdAt: Date? = null
 )
 
+data class Ride(
+    @DocumentId val id: String = "",
+    val driverId: String = "",
+    val driverName: String = "",
+    val driverPhotoUrl: String? = null,
+    val carPhotoUrl: String? = null,
+    val driverRating: Double = 5.0,
+    val origin: String = "",
+    val destination: String = "",
+    val departureTime: Date? = null,
+    val seatsTotal: Int = 1,
+    val seatsAvailable: Int = 1,
+    val pricePerSeat: Double = 0.0,
+    val status: RideStatus = RideStatus.OPEN,
+    val weatherCondition: WeatherCondition = WeatherCondition(),
+    @ServerTimestamp val createdAt: Date? = null
+)
+
+enum class RideStatus { OPEN, FULL, COMPLETED, CANCELLED }
+
+enum class WeatherType { NONE, RAIN, TOO_HOT, TOO_COLD }
+
+data class WeatherCondition(
+    val type: WeatherType = WeatherType.NONE,
+    val threshold: Double? = null
+)
+
+data class RideFilter(
+    val origin: String = "",
+    val destination: String = "",
+    val minSeats: Int = 1,
+    val maxPrice: Double? = null,
+    val date: Date? = null
+)
+
+data class Booking(
+    @DocumentId val id: String = "",
+    val rideId: String = "",
+    val passengerId: String = "",
+    val passengerName: String = "",
+    val seatsRequested: Int = 1,
+    val totalPrice: Double = 0.0,
+    val status: BookingStatus = BookingStatus.PENDING,
+    @ServerTimestamp val createdAt: Date? = null
+)
+
+enum class BookingStatus { PENDING, ACCEPTED, CONFIRMED, CANCELLED, REJECTED }
+
+@Entity(tableName = "rides_cache")
+data class RideEntity(
+    @PrimaryKey val id: String,
+    val driverId: String,
+    val driverName: String,
+    val driverPhotoUrl: String?,
+    val driverRating: Double,
+    val origin: String,
+    val destination: String,
+    val departureTimeMs: Long,
+    val seatsTotal: Int,
+    val seatsAvailable: Int,
+    val pricePerSeat: Double,
+    val status: String,
+    val weatherType: String = "NONE",
+    val weatherThreshold: Double? = null,
+    val cachedAtMs: Long = System.currentTimeMillis()
+)
+
+fun Ride.toEntity() = RideEntity(
+    id, driverId, driverName, driverPhotoUrl, driverRating, origin, destination,
+    departureTime?.time ?: 0L, seatsTotal, seatsAvailable, pricePerSeat, status.name,
+    weatherCondition.type.name, weatherCondition.threshold
+)
+
+fun RideEntity.toDomain() = Ride(
+    id = id, driverId = driverId, driverName = driverName,
+    driverPhotoUrl = driverPhotoUrl, driverRating = driverRating,
+    origin = origin, destination = destination,
+    departureTime = Date(departureTimeMs),
+    seatsTotal = seatsTotal, seatsAvailable = seatsAvailable,
+    pricePerSeat = pricePerSeat, status = RideStatus.valueOf(status),
+    weatherCondition = WeatherCondition(
+        type = WeatherType.valueOf(weatherType),
+        threshold = weatherThreshold
+    )
+)
+
 @Entity(tableName = "requests_cache")
+
 data class RideRequestEntity(
     @PrimaryKey val id: String,
     val passengerId: String,

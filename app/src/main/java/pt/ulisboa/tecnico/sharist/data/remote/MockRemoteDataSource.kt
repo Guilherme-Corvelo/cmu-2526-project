@@ -45,6 +45,7 @@ class MockRemoteDataSource : RemoteDataSource {
         )
     )
 
+    private val requestsFlow = MutableStateFlow(mutableListOf<RideRequest>())
     private val bookingsFlow = MutableStateFlow(mutableListOf<Booking>())
 
     override suspend fun signIn(email: String, pass: String): com.google.firebase.auth.AuthResult? {
@@ -126,6 +127,39 @@ class MockRemoteDataSource : RemoteDataSource {
 
     override fun observeRideBookings(rideId: String): Flow<List<Booking>> =
         bookingsFlow.map { bookings -> bookings.filter { it.rideId == rideId } }
+
+    override fun observeOpenRequests(): Flow<List<RideRequest>> =
+        requestsFlow.map { reqs -> reqs.filter { it.status == RequestStatus.OPEN } }
+
+    override fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>> =
+        requestsFlow.map { reqs -> reqs.filter { it.passengerId == passengerId } }
+
+    override fun observeDriverRequests(driverId: String): Flow<List<RideRequest>> =
+        requestsFlow.map { reqs -> reqs.filter { it.driverId == driverId } }
+
+    override suspend fun createRequest(request: RideRequest): String {
+        val id = request.id.ifBlank { "mock_req_${UUID.randomUUID()}" }
+        requestsFlow.value = (requestsFlow.value + request.copy(id = id)).toMutableList()
+        return id
+    }
+
+    override suspend fun cancelRequest(requestId: String) {
+        requestsFlow.value = requestsFlow.value.map { 
+            if (it.id == requestId) it.copy(status = RequestStatus.CANCELLED) else it 
+        }.toMutableList()
+    }
+
+    override suspend fun completeRequest(requestId: String) {
+        requestsFlow.value = requestsFlow.value.map { 
+            if (it.id == requestId) it.copy(status = RequestStatus.COMPLETED) else it 
+        }.toMutableList()
+    }
+
+    override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
+        requestsFlow.value = requestsFlow.value.map { 
+            if (it.id == requestId) it.copy(status = RequestStatus.ACCEPTED, driverId = driverId, driverName = driverName, driverRating = driverRating) else it 
+        }.toMutableList()
+    }
 
     private fun matchesText(field: String, query: String): Boolean {
         if (query.isBlank()) return true

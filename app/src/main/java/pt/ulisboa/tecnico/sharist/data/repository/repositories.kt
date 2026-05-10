@@ -8,63 +8,81 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.data.local.LocalDataSource
 import pt.ulisboa.tecnico.sharist.data.model.*
-import pt.ulisboa.tecnico.sharist.data.remote.FirebaseDataSource
+import pt.ulisboa.tecnico.sharist.data.remote.RemoteDataSource
 import pt.ulisboa.tecnico.sharist.utils.NetworkMonitor
 
 private const val TAG = "Repository"
 private val gson = Gson()
 
-class RideRequestRepository(
-    private val remote: FirebaseDataSource,
+class RideRepository(
+    private val remote: RemoteDataSource,
     private val local: LocalDataSource,
     private val network: NetworkMonitor
 ) {
-    fun getOpenRequests(): Flow<List<RideRequest>> {
-        if (network.isConnected) syncToCache { remote.observeOpenRequests() }
-        return local.requestDao.observeOpenRequests().map { it.map { e -> e.toDomain() } }
+    fun getRides(filter: RideFilter): Flow<List<Ride>> {
+        if (network.isConnected) syncRidesToCache(filter)
+        return local.rideDao.observeOpenRides().map { it.map { e -> e.toDomain() } }
     }
 
-    fun getPassengerRequests(uid: String): Flow<List<RideRequest>> {
-        if (network.isConnected) syncToCache { remote.observePassengerRequests(uid) }
-        return local.requestDao.observePassengerRequests(uid).map { it.map { e -> e.toDomain() } }
+    // Alias for getRides to match some UI usages
+    fun searchRides(filter: RideFilter) = getRides(filter)
+
+    fun getDriverRides(uid: String): Flow<List<Ride>> {
+        if (network.isConnected) syncDriverRidesToCache(uid)
+        return local.rideDao.observeDriverRides(uid).map { it.map { e -> e.toDomain() } }
     }
 
-    fun getDriverRequests(uid: String): Flow<List<RideRequest>> {
-        if (network.isConnected) syncToCache { remote.observeDriverRequests(uid) }
-        return local.requestDao.observeDriverRequests(uid).map { it.map { e -> e.toDomain() } }
-    }
-
-    private fun syncToCache(source: () -> Flow<List<RideRequest>>) {
+    private fun syncRidesToCache(filter: RideFilter) {
         CoroutineScope(Dispatchers.IO).launch {
-            source().catch { Log.e(TAG, "Remote sync error", it) }
-                .collect { list -> local.requestDao.upsert(list.map { it.toEntity() }); local.evictStale() }
+            remote.observeRides(filter)
+                .catch { Log.e(TAG, "Remote sync error", it) }
+                .collect { list -> 
+                    local.rideDao.upsert(list.map { it.toEntity() })
+                    local.evictStale()
+                }
         }
     }
 
-    suspend fun createRequest(request: RideRequest): Result<String> {
+    private fun syncDriverRidesToCache(uid: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            remote.observeDriverRides(uid)
+                .catch { Log.e(TAG, "Remote sync error", it) }
+                .collect { list -> 
+                    local.rideDao.upsert(list.map { it.toEntity() })
+                }
+        }
+    }
+
+    suspend fun createRide(ride: Ride): Result<String> {
         if (!network.isConnected) {
-            val id = local.pendingDao.insert(PendingOperation(type = "CREATE_REQUEST", payload = gson.toJson(request)))
+            val id = local.pendingDao.insert(PendingOperation(type = "CREATE_RIDE", payload = gson.toJson(ride)))
             return Result.success("pending_$id")
         }
-        return runCatching { remote.createRequest(request) }
+        return runCatching { remote.createRide(ride) }
     }
 
-    suspend fun cancelRequest(requestId: String): Result<Unit> = runCatching { remote.cancelRequest(requestId) }
+    suspend fun getRide(rideId: String): Ride? = remote.getRide(rideId)
 
-    suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double): Result<Unit> {
-        if (!network.isConnected) return Result.failure(Exception("No connection — try again when online"))
-        return runCatching { remote.acceptRequest(requestId, driverId, driverName, driverRating) }
+    fun getRideBookings(rideId: String): Flow<List<Booking>> = remote.observeRideBookings(rideId)
+
+    suspend fun bookRide(booking: Booking): Result<String> {
+        if (!network.isConnected) {
+            val id = local.pendingDao.insert(PendingOperation(type = "CREATE_BOOKING", payload = gson.toJson(booking)))
+            return Result.success("pending_$id")
+        }
+        return runCatching { remote.createBooking(booking) }
     }
 
-    suspend fun completeRequest(requestId: String): Result<Unit> = runCatching { remote.completeRequest(requestId) }
-    suspend fun submitReview(review: Review): Result<Unit> = runCatching { remote.submitReview(review) }
+    suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) {
+        remote.updateBookingStatus(bookingId, status)
+    }
 
-    suspend fun syncPending() {
+    suspend fun syncPendingOperations() {
         local.pendingDao.getPending().forEach { op ->
             try {
                 when (op.type) {
-                    "CREATE_REQUEST" -> remote.createRequest(gson.fromJson(op.payload, RideRequest::class.java))
-                    "CANCEL_REQUEST" -> remote.cancelRequest(op.payload)
+                    "CREATE_RIDE" -> remote.createRide(gson.fromJson(op.payload, Ride::class.java))
+                    "CREATE_BOOKING" -> remote.createBooking(gson.fromJson(op.payload, Booking::class.java))
                 }
                 op.synced = true
                 local.pendingDao.update(op)
@@ -77,12 +95,36 @@ class RideRequestRepository(
 
     suspend fun preloadOnWifi() {
         if (!network.isWifi) return
-        remote.observeOpenRequests().take(1).catch { Log.e(TAG, "Preload error", it) }
-            .collect { list -> local.requestDao.upsert(list.map { it.toEntity() }) }
+        remote.observeRides(RideFilter()).take(1)
+            .catch { Log.e(TAG, "Preload error", it) }
+            .collect { list -> local.rideDao.upsert(list.map { it.toEntity() }) }
     }
 }
 
-class UserRepository(private val remote: FirebaseDataSource) {
+class RideRequestRepository(
+    private val remote: RemoteDataSource,
+    private val local: LocalDataSource,
+    private val network: NetworkMonitor
+) {
+    fun getOpenRequests(): Flow<List<RideRequest>> = remote.observeOpenRequests()
+
+    fun getPassengerRequests(passengerId: String): Flow<List<RideRequest>> =
+        remote.observePassengerRequests(passengerId)
+
+    suspend fun createRequest(request: RideRequest): Result<String> = runCatching {
+        remote.createRequest(request)
+    }
+
+    suspend fun cancelRequest(requestId: String) {
+        remote.cancelRequest(requestId)
+    }
+
+    suspend fun submitReview(review: Review) {
+        remote.submitReview(review)
+    }
+}
+
+class UserRepository(private val remote: RemoteDataSource) {
     val currentUid get() = remote.currentUid
     suspend fun signIn(email: String, password: String) = remote.signIn(email, password)
     suspend fun register(email: String, password: String) = remote.register(email, password)

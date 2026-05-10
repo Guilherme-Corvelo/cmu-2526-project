@@ -16,9 +16,11 @@ import pt.ulisboa.tecnico.sharist.data.remote.FirebaseDataSource
 import pt.ulisboa.tecnico.sharist.data.remote.MockRemoteDataSource
 import pt.ulisboa.tecnico.sharist.data.remote.RemoteDataSource
 import pt.ulisboa.tecnico.sharist.data.repository.RideRepository
+import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.data.repository.UserRepository
 import pt.ulisboa.tecnico.sharist.utils.ConnectionType
 import pt.ulisboa.tecnico.sharist.utils.NetworkMonitor
+import pt.ulisboa.tecnico.sharist.utils.SessionManager
 
 class SharISTApp : Application() {
 
@@ -32,6 +34,8 @@ class SharISTApp : Application() {
     private val db by lazy { SharISTDatabase.getInstance(this) }
 
     private val localDataSource by lazy { LocalDataSource(db) }
+
+    val sessionManager by lazy { SessionManager(this) }
 
     val remoteDataSource: RemoteDataSource by lazy {
         // Check if google-services.json was applied by looking for the generated resource
@@ -64,6 +68,9 @@ class SharISTApp : Application() {
 
     val rideRepository by lazy {
         RideRepository(remoteDataSource, localDataSource, networkMonitor)
+    }
+    val requestRepository by lazy {
+        RideRequestRepository(remoteDataSource, localDataSource, networkMonitor)
     }
     val userRepository by lazy {
         UserRepository(remoteDataSource)

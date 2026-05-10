@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 import pt.ulisboa.tecnico.sharist.data.model.PendingOperation
+import pt.ulisboa.tecnico.sharist.data.model.RideEntity
 import pt.ulisboa.tecnico.sharist.data.model.RideRequestEntity
 
 @Dao
@@ -28,6 +29,24 @@ interface RideRequestDao {
 }
 
 @Dao
+interface RideDao {
+    @Query("SELECT * FROM rides_cache WHERE status = 'OPEN' ORDER BY departureTimeMs ASC")
+    fun observeOpenRides(): Flow<List<RideEntity>>
+
+    @Query("SELECT * FROM rides_cache WHERE driverId = :uid ORDER BY departureTimeMs DESC")
+    fun observeDriverRides(uid: String): Flow<List<RideEntity>>
+
+    @Query("SELECT * FROM rides_cache WHERE id = :id")
+    suspend fun getById(id: String): RideEntity?
+
+    @Upsert suspend fun upsert(rides: List<RideEntity>)
+    @Upsert suspend fun upsertOne(ride: RideEntity)
+
+    @Query("DELETE FROM rides_cache WHERE cachedAtMs < :cutoffMs AND status != 'OPEN'")
+    suspend fun evictStale(cutoffMs: Long)
+}
+
+@Dao
 interface PendingOperationDao {
     @Query("SELECT * FROM pending_operations WHERE synced = 0 ORDER BY createdAtMs ASC")
     suspend fun getPending(): List<PendingOperation>
@@ -37,9 +56,10 @@ interface PendingOperationDao {
     suspend fun clearSynced()
 }
 
-@Database(entities = [RideRequestEntity::class, PendingOperation::class], version = 1, exportSchema = false)
+@Database(entities = [RideRequestEntity::class, RideEntity::class, PendingOperation::class], version = 2, exportSchema = false)
 abstract class SharISTDatabase : RoomDatabase() {
     abstract fun requestDao(): RideRequestDao
+    abstract fun rideDao(): RideDao
     abstract fun pendingDao(): PendingOperationDao
 
     companion object {
@@ -53,9 +73,11 @@ abstract class SharISTDatabase : RoomDatabase() {
 
 class LocalDataSource(private val db: SharISTDatabase) {
     val requestDao get() = db.requestDao()
+    val rideDao get() = db.rideDao()
     val pendingDao get() = db.pendingDao()
     suspend fun evictStale() {
         val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
         requestDao.evictStale(cutoff)
+        rideDao.evictStale(cutoff)
     }
 }

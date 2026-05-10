@@ -12,13 +12,26 @@ interface RemoteDataSource {
     suspend fun getUser(uid: String): User?
     suspend fun updateBalance(uid: String, delta: Double)
     suspend fun submitReview(review: Review)
+    
+    // Rides
     fun observeRides(filter: RideFilter): Flow<List<Ride>>
     suspend fun getRide(rideId: String): Ride?
     fun observeDriverRides(driverId: String): Flow<List<Ride>>
     suspend fun createRide(ride: Ride): String
     suspend fun decrementSeat(rideId: String)
+    
+    // Bookings
     suspend fun createBooking(booking: Booking): String
     suspend fun updateBookingStatus(bookingId: String, status: BookingStatus)
     fun observePassengerBookings(passengerId: String): Flow<List<Booking>>
     fun observeRideBookings(rideId: String): Flow<List<Booking>>
+
+    // Ride Requests (Legacy/Alternative flow)
+    fun observeOpenRequests(): Flow<List<RideRequest>>
+    fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>>
+    fun observeDriverRequests(driverId: String): Flow<List<RideRequest>>
+    suspend fun createRequest(request: RideRequest): String
+    suspend fun cancelRequest(requestId: String)
+    suspend fun completeRequest(requestId: String)
+    suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double)
 }
