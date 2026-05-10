@@ -19,36 +19,12 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
     sealed class State { object Idle: State(); object Loading: State(); object Success: State(); data class Error(val msg: String): State() }
     private val _state = MutableLiveData<State>(State.Idle)
     val state: LiveData<State> = _state
-    fun signIn(email: String, password: String) {
-        _state.value = State.Loading
-        viewModelScope.launch {
-            runCatching { userRepo.signIn(email, password) }
-                .onSuccess { r ->
-                    val uid = r?.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }
-                    val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }
-                    session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName)
-                    _state.value = State.Success
-                }
-                .onFailure { _state.value = State.Error(it.message ?: "Login failed") }
-        }
-    }
-
-    fun register(email: String, password: String, name: String, isDriver: Boolean) {
-        _state.value = State.Loading
-        viewModelScope.launch {
-            runCatching {
-                val r = userRepo.register(email, password)
-                val uid = r?.user?.uid ?: error("No UID")
-                userRepo.createProfile(User(uid = uid, displayName = name, email = email, isDriver = isDriver))
-                uid
-            }
-                .onSuccess { uid ->
-                    session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name)
-                    _state.value = State.Success
-                }
-                .onFailure { _state.value = State.Error(it.message ?: "Registration failed") }
-        }
-    }
+    fun signIn(email: String, password: String) { _state.value = State.Loading; viewModelScope.launch { runCatching { userRepo.signIn(email, password) }
+        .onSuccess { r -> val uid = r.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }; val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }; session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName); _state.value = State.Success }
+        .onFailure { _state.value = State.Error(it.message ?: "Login failed") } } }
+    fun register(email: String, password: String, name: String, isDriver: Boolean) { _state.value = State.Loading; viewModelScope.launch { runCatching { val r = userRepo.register(email,password); val uid = r.user?.uid ?: error("No UID"); userRepo.createProfile(User(uid = uid, displayName = name, email = email, isDriver = isDriver)); uid }
+        .onSuccess { uid -> session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name); _state.value = State.Success }
+        .onFailure { _state.value = State.Error(it.message ?: "Registration failed") } } }
 }
 
 class AuthActivity : AppCompatActivity() {
