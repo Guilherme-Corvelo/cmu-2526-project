@@ -12,6 +12,7 @@ import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.ui.auth.AuthActivity
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
+import pt.ulisboa.tecnico.sharist.utils.SessionManager
 
 class ProfileFragment : Fragment() {
 
@@ -29,14 +30,22 @@ class ProfileFragment : Fragment() {
         val tvEmail  = view.findViewById<TextView>(R.id.tv_email)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
 
+        val session = (requireActivity().application as SharISTApp).sessionManager
         val uid = userRepo.currentUid
-        if (uid != null) {
+        if (session.forceDemoMode) {
+            val (name, email) = if (session.role == SessionManager.ROLE_DRIVER) {
+                DemoRequestStore.DEMO_DRIVER_NAME to "demo_driver@demo.app"
+            } else {
+                DemoRequestStore.DEMO_CLIENT_NAME to "demo_client@demo.app"
+            }
+            tvEmail.text = "$name ($email)"
+        } else if (uid != null) {
             viewLifecycleOwner.lifecycleScope.launch {
                 val user = userRepo.getUser(uid)
                 tvEmail.text = user?.email ?: getString(R.string.unknown_email)
             }
         } else {
-            tvEmail.text = "${DemoRequestStore.DEMO_CLIENT_NAME} (demo_client@demo.app)"
+            tvEmail.text = getString(R.string.unknown_email)
         }
 
         btnLogout.setOnClickListener {
