@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/nav_graph_driver" app:startDestination="@id/availableRequestsFragment">
+<fragment android:id="@+id/availableRequestsFragment" android:name="pt.ulisboa.tecnico.sharist.ui.driver.AvailableRequestsFragment"/>
+<fragment android:id="@+id/myActiveRidesFragment" android:name="pt.ulisboa.tecnico.sharist.ui.driver.MyActiveRidesFragment"/>
+<fragment android:id="@+id/profileFragment" android:name="pt.ulisboa.tecnico.sharist.ui.profile.ProfileFragment"/>
+</navigation>

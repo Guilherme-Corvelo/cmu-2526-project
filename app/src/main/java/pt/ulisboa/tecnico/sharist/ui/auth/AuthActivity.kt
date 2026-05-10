@@ -9,211 +9,35 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.*
 import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
+import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.User
 import pt.ulisboa.tecnico.sharist.data.repository.UserRepository
-import pt.ulisboa.tecnico.sharist.MainActivity
+import pt.ulisboa.tecnico.sharist.ui.MainActivity
+import pt.ulisboa.tecnico.sharist.utils.SessionManager
 
-// ─── ViewModel ────────────────────────────────────────────────────────────────
-
-class AuthViewModel(private val userRepo: UserRepository) : ViewModel() {
-
-    sealed class AuthState {
-        object Idle : AuthState()
-        object Loading : AuthState()
-        data class Success(val uid: String) : AuthState()
-        data class Error(val message: String) : AuthState()
-    }
-
-    private val _state = MutableLiveData<AuthState>(AuthState.Idle)
-    val state: LiveData<AuthState> = _state
-
-    fun signIn(email: String, password: String, loginAsDriver: Boolean) {
-        _state.value = AuthState.Loading
-        viewModelScope.launch {
-            runCatching { userRepo.signIn(email, password) }
-                .onSuccess { result ->
-                    val uid = result?.user?.uid ?: userRepo.currentUid
-                    if (uid != null) {
-                        val user = userRepo.getUser(uid)
-                        if (user == null) {
-                            _state.value = AuthState.Error("User profile not found")
-                        } else if (user.isDriver != loginAsDriver) {
-                            val expectedRole = if (loginAsDriver) "driver" else "client"
-                            _state.value = AuthState.Error("This account is not registered as $expectedRole")
-                        } else {
-                            _state.value = AuthState.Success(uid)
-                        }
-                    } else {
-                        _state.value = AuthState.Error("Login failed: Invalid credentials")
-                    }
-                }
-                .onFailure { e ->
-                    _state.value = AuthState.Error(e.message ?: "Login failed")
-                }
-        }
-    }
-
-    fun register(email: String, password: String, displayName: String, isDriver: Boolean) {
-        if (email.isBlank() || password.length < 6 || displayName.isBlank()) {
-            _state.value = AuthState.Error("Please fill all fields (password ≥ 6 chars)")
-            return
-        }
-        _state.value = AuthState.Loading
-        viewModelScope.launch {
-            runCatching {
-                val result = userRepo.register(email, password)
-                val uid = result?.user?.uid ?: userRepo.currentUid ?: error("Registration failed")
-                userRepo.createProfile(
-                    User(uid = uid, displayName = displayName,
-                         email = email, isDriver = isDriver)
-                )
-                uid
-            }
-                .onSuccess { uid -> _state.value = AuthState.Success(uid) }
-                .onFailure { e -> _state.value = AuthState.Error(e.message ?: "Registration failed") }
-        }
-    }
+class AuthViewModel(private val userRepo: UserRepository, private val session: SessionManager) : ViewModel() {
+    sealed class State { object Idle: State(); object Loading: State(); object Success: State(); data class Error(val msg: String): State() }
+    private val _state = MutableLiveData<State>(State.Idle)
+    val state: LiveData<State> = _state
+    fun signIn(email: String, password: String) { _state.value = State.Loading; viewModelScope.launch { runCatching { userRepo.signIn(email, password) }
+        .onSuccess { r -> val uid = r.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }; val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }; session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName); _state.value = State.Success }
+        .onFailure { _state.value = State.Error(it.message ?: "Login failed") } } }
+    fun register(email: String, password: String, name: String, isDriver: Boolean) { _state.value = State.Loading; viewModelScope.launch { runCatching { val r = userRepo.register(email,password); val uid = r.user?.uid ?: error("No UID"); userRepo.createProfile(User(uid = uid, displayName = name, email = email, isDriver = isDriver)); uid }
+        .onSuccess { uid -> session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name); _state.value = State.Success }
+        .onFailure { _state.value = State.Error(it.message ?: "Registration failed") } } }
 }
 
-// ─── Activity ─────────────────────────────────────────────────────────────────
-
 class AuthActivity : AppCompatActivity() {
-
-    private val viewModel: AuthViewModel by viewModels {
-        object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                @Suppress("UNCHECKED_CAST")
-                return AuthViewModel(
-                    (application as pt.ulisboa.tecnico.sharist.SharISTApp).userRepository
-                ) as T
-            }
-        }
-    }
-
-    // Views – would normally be in layout XML; shown here for clarity
-    private lateinit var tabLogin: Button
-    private lateinit var tabRegister: Button
-    private lateinit var etEmail: EditText
-    private lateinit var etPassword: EditText
-    private lateinit var etName: EditText
-    private lateinit var switchDriver: Switch
-    private lateinit var radioLoginRole: RadioGroup
-    private lateinit var radioLoginDriver: RadioButton
-    private lateinit var btnSubmit: Button
-    private lateinit var btnDemoClient: Button
-    private lateinit var btnDemoDriver: Button
-    private lateinit var layoutDemoButtons: LinearLayout
-    private lateinit var tvDemoHint: TextView
-    private lateinit var tvError: TextView
-    private lateinit var progressBar: ProgressBar
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_auth)
-
-        bindViews()
-        observeState()
-        setupTabs()
-
-        btnSubmit.setOnClickListener { onSubmit() }
-        btnDemoClient.setOnClickListener { loginDemo(isDriver = false) }
-        btnDemoDriver.setOnClickListener { loginDemo(isDriver = true) }
-    }
-
-    private fun bindViews() {
-        tabLogin    = findViewById(R.id.tab_login)
-        tabRegister = findViewById(R.id.tab_register)
-        etEmail     = findViewById(R.id.et_email)
-        etPassword  = findViewById(R.id.et_password)
-        etName      = findViewById(R.id.et_name)
-        switchDriver = findViewById(R.id.switch_driver)
-        radioLoginRole = findViewById(R.id.radio_login_role)
-        radioLoginDriver = findViewById(R.id.radio_login_driver)
-        btnSubmit   = findViewById(R.id.btn_submit)
-        btnDemoClient = findViewById(R.id.btn_demo_client)
-        btnDemoDriver = findViewById(R.id.btn_demo_driver)
-        layoutDemoButtons = findViewById(R.id.layout_demo_buttons)
-        tvDemoHint = findViewById(R.id.tv_demo_hint)
-        tvError     = findViewById(R.id.tv_error)
-        progressBar = findViewById(R.id.progress_bar)
-    }
-
+    private val vm: AuthViewModel by viewModels { object : ViewModelProvider.Factory { override fun <T : ViewModel> create(c: Class<T>): T { val app = application as SharISTApp; @Suppress("UNCHECKED_CAST") return AuthViewModel(app.userRepository, app.sessionManager) as T } } }
     private var isLoginMode = true
-
-    private fun setupTabs() {
-        val updateTabs = {
-            if (isLoginMode) {
-                tabLogin.alpha = 1.0f
-                tabRegister.alpha = 0.5f
-                etName.visibility = View.GONE
-                switchDriver.visibility = View.GONE
-                radioLoginRole.visibility = View.VISIBLE
-                btnSubmit.text = "Sign in"
-                layoutDemoButtons.visibility = View.GONE
-                tvDemoHint.visibility = View.GONE
-            } else {
-                tabLogin.alpha = 0.5f
-                tabRegister.alpha = 1.0f
-                etName.visibility = View.VISIBLE
-                switchDriver.visibility = View.VISIBLE
-                radioLoginRole.visibility = View.GONE
-                btnSubmit.text = "Create account"
-                layoutDemoButtons.visibility = View.VISIBLE
-                tvDemoHint.visibility = View.VISIBLE
-            }
-            tvError.visibility = View.GONE
-        }
-
-        tabLogin.setOnClickListener {
-            isLoginMode = true
-            updateTabs()
-        }
-        tabRegister.setOnClickListener {
-            isLoginMode = false
-            updateTabs()
-        }
-        updateTabs()
-    }
-
-    private fun onSubmit() {
-        val email    = etEmail.text.toString().trim()
-        val password = etPassword.text.toString()
-        if (isLoginMode) {
-            val loginAsDriver = radioLoginRole.checkedRadioButtonId == R.id.radio_login_driver
-            viewModel.signIn(email, password, loginAsDriver)
-        } else {
-            viewModel.register(
-                email      = email,
-                password   = password,
-                displayName = etName.text.toString().trim(),
-                isDriver   = switchDriver.isChecked
-            )
-        }
-    }
-
-    private fun loginDemo(isDriver: Boolean) {
-        val email = if (isDriver) "driver@demo.app" else "client@demo.app"
-        viewModel.signIn(email = email, password = "demo", loginAsDriver = isDriver)
-    }
-
-    private fun observeState() {
-        viewModel.state.observe(this) { state ->
-            progressBar.visibility = if (state is AuthViewModel.AuthState.Loading) View.VISIBLE else View.GONE
-            btnSubmit.isEnabled    = state !is AuthViewModel.AuthState.Loading
-
-            when (state) {
-                is AuthViewModel.AuthState.Success -> goToMain()
-                is AuthViewModel.AuthState.Error   -> {
-                    tvError.visibility = View.VISIBLE
-                    tvError.text = state.message
-                }
-                else -> tvError.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun goToMain() {
-        startActivity(Intent(this, MainActivity::class.java))
-        finish()
+    private var selectedDriver = false
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContentView(R.layout.activity_auth)
+        val tabLogin = findViewById<Button>(R.id.tab_login); val tabRegister = findViewById<Button>(R.id.tab_register); val etEmail = findViewById<EditText>(R.id.et_email); val etPassword = findViewById<EditText>(R.id.et_password); val registerGroup = findViewById<View>(R.id.layout_register_only); val etName = findViewById<EditText>(R.id.et_name); val btnPassenger = findViewById<Button>(R.id.btn_role_passenger); val btnDriver = findViewById<Button>(R.id.btn_role_driver); val tvError = findViewById<TextView>(R.id.tv_error); val progressBar = findViewById<ProgressBar>(R.id.progress_bar); val btnSubmit = findViewById<Button>(R.id.btn_submit)
+        fun setRole(driver: Boolean) { selectedDriver = driver; btnPassenger.alpha = if (!driver) 1f else 0.4f; btnDriver.alpha = if (driver) 1f else 0.4f }
+        fun switchMode(login: Boolean) { isLoginMode = login; registerGroup.visibility = if (login) View.GONE else View.VISIBLE; btnSubmit.text = if (login) "Sign In" else "Create Account"; tabLogin.alpha = if (login) 1f else 0.4f; tabRegister.alpha = if (!login) 1f else 0.4f; tvError.visibility = View.GONE }
+        setRole(false); switchMode(true)
+        btnPassenger.setOnClickListener { setRole(false) }; btnDriver.setOnClickListener { setRole(true) }; tabLogin.setOnClickListener { switchMode(true) }; tabRegister.setOnClickListener { switchMode(false) }
+        btnSubmit.setOnClickListener { if (isLoginMode) vm.signIn(etEmail.text.toString().trim(), etPassword.text.toString()) else vm.register(etEmail.text.toString().trim(), etPassword.text.toString(), etName.text.toString().trim(), selectedDriver) }
+        vm.state.observe(this) { state -> progressBar.visibility = if (state is AuthViewModel.State.Loading) View.VISIBLE else View.GONE; btnSubmit.isEnabled = state !is AuthViewModel.State.Loading; when (state) { is AuthViewModel.State.Success -> startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)); is AuthViewModel.State.Error -> { tvError.visibility = View.VISIBLE; tvError.text = state.msg }; else -> Unit } }
     }
 }
