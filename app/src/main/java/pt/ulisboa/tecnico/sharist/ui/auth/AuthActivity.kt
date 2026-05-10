@@ -87,6 +87,10 @@ class AuthActivity : AppCompatActivity() {
 
         val tvDemoHint = findViewById<TextView>(R.id.tv_demo_hint)
         val layoutDemoButtons = findViewById<View>(R.id.layout_demo_buttons)
+
+        // Demo entry shortcuts:
+        // - Client button starts the app as a demo passenger.
+        // - Driver button starts the app as a demo driver.
         val btnDemoClient = findViewById<Button>(R.id.btn_demo_client)
         val btnDemoDriver = findViewById<Button>(R.id.btn_demo_driver)
 
@@ -97,8 +101,9 @@ class AuthActivity : AppCompatActivity() {
             btnSubmit.text = if (login) "Sign In" else "Create Account"
             tabLogin.alpha = if (login) 1f else 0.4f
             tabRegister.alpha = if (!login) 1f else 0.4f
-            tvDemoHint.visibility = if (login) View.VISIBLE else View.GONE
-            layoutDemoButtons.visibility = if (login) View.VISIBLE else View.GONE
+            // Keep demo controls visible in both Sign In and Register tabs
+            tvDemoHint.visibility = View.VISIBLE
+            layoutDemoButtons.visibility = View.VISIBLE
             tvError.visibility = View.GONE
         }
 
@@ -120,15 +125,25 @@ class AuthActivity : AppCompatActivity() {
             }
         }
 
+        // Quick demo login as passenger/client (bypasses Firebase auth)
         btnDemoClient.setOnClickListener {
             app.sessionManager.forceDemoMode = true
-            app.sessionManager.save(DemoRequestStore.DEMO_CLIENT_ID, SessionManager.ROLE_PASSENGER, DemoRequestStore.DEMO_CLIENT_NAME)
+            app.sessionManager.save(
+                DemoRequestStore.DEMO_CLIENT_ID,
+                SessionManager.ROLE_PASSENGER,
+                DemoRequestStore.DEMO_CLIENT_NAME
+            )
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
         }
 
+        // Quick demo login as driver (bypasses Firebase auth)
         btnDemoDriver.setOnClickListener {
             app.sessionManager.forceDemoMode = true
-            app.sessionManager.save(DemoRequestStore.DEMO_DRIVER_ID, SessionManager.ROLE_DRIVER, DemoRequestStore.DEMO_DRIVER_NAME)
+            app.sessionManager.save(
+                DemoRequestStore.DEMO_DRIVER_ID,
+                SessionManager.ROLE_DRIVER,
+                DemoRequestStore.DEMO_DRIVER_NAME
+            )
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
         }
 
