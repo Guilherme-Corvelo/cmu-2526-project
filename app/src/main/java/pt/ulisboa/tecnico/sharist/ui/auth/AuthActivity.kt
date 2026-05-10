@@ -26,7 +26,7 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
         viewModelScope.launch {
             runCatching { userRepo.signIn(email, password) }
                 .onSuccess { r ->
-                    val uid = r.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }
+                    val uid = r?.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }
                     val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }
                     session.forceDemoMode = false
                     session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName)
@@ -41,7 +41,7 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
         viewModelScope.launch {
             runCatching {
                 val r = userRepo.register(email, password)
-                val uid = r.user?.uid ?: error("No UID")
+                val uid = r?.user?.uid ?: error("No UID")
                 userRepo.createProfile(User(uid = uid, displayName = name, email = email, isDriver = isDriver))
                 uid
             }
@@ -58,7 +58,7 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
 class AuthActivity : AppCompatActivity() {
     private val vm: AuthViewModel by viewModels {
         object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(c: Class<T>): T {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 val app = application as SharISTApp
                 @Suppress("UNCHECKED_CAST")
                 return AuthViewModel(app.userRepository, app.sessionManager) as T
@@ -80,7 +80,7 @@ class AuthActivity : AppCompatActivity() {
         val etName = findViewById<EditText>(R.id.et_name)
         val tilName = findViewById<View>(R.id.til_name)
         val driverToggle = findViewById<View>(R.id.layout_driver_toggle)
-        val switchDriver = findViewById<Switch>(R.id.switch_driver)
+        val switchDriver = findViewById<CompoundButton>(R.id.switch_driver)
         val tvError = findViewById<TextView>(R.id.tv_error)
         val progressBar = findViewById<ProgressBar>(R.id.progress_bar)
         val btnSubmit = findViewById<Button>(R.id.btn_submit)

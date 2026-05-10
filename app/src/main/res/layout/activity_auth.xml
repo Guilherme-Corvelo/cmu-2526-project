@@ -83,6 +83,7 @@
             android:visibility="gone">
 
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/til_name"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:hint="Display Name"
@@ -96,27 +97,23 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <LinearLayout
+                android:id="@+id/layout_driver_toggle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
+                android:gravity="center_vertical"
                 android:layout_marginBottom="12dp">
 
-                <Button
-                    android:id="@+id/btn_role_passenger"
+                <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Passenger"
-                    style="@style/Widget.Material3.Button.OutlinedButton"/>
+                    android:text="Register as Driver"/>
 
-                <Button
-                    android:id="@+id/btn_role_driver"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:text="Driver"
-                    style="@style/Widget.Material3.Button.OutlinedButton"/>
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switch_driver"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"/>
             </LinearLayout>
         </LinearLayout>
 
