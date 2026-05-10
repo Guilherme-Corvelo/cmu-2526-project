@@ -25,7 +25,10 @@ class AvailableRequestsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
-        val adapter = DriverRequestAdapter { DemoRequestStore.acceptRequest(it.id) }
+        val adapter = DriverRequestAdapter(
+            onAccept = { DemoRequestStore.acceptRequest(it.id) },
+            onDeny = { DemoRequestStore.denyRequest(it.id) }
+        )
         recycler.layoutManager = LinearLayoutManager(requireContext())
         recycler.adapter = adapter
 
@@ -39,7 +42,10 @@ class AvailableRequestsFragment : Fragment() {
     }
 }
 
-class DriverRequestAdapter(private val onAccept: (RideRequest) -> Unit) : ListAdapter<RideRequest, DriverRequestAdapter.VH>(DIFF) {
+class DriverRequestAdapter(
+    private val onAccept: (RideRequest) -> Unit,
+    private val onDeny: (RideRequest) -> Unit = {}
+) : ListAdapter<RideRequest, DriverRequestAdapter.VH>(DIFF) {
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
         val tvDriver: TextView = v.findViewById(R.id.tv_driver)
@@ -54,7 +60,9 @@ class DriverRequestAdapter(private val onAccept: (RideRequest) -> Unit) : ListAd
         h.btnCancel.visibility = View.VISIBLE
         h.btnCancel.text = "Accept"
         h.btnCancel.setOnClickListener { onAccept(r) }
-        h.btnRate.visibility = View.GONE
+        h.btnRate.visibility = View.VISIBLE
+        h.btnRate.text = "Deny"
+        h.btnRate.setOnClickListener { onDeny(r) }
     }
     companion object { private val DIFF = object : DiffUtil.ItemCallback<RideRequest>() { override fun areItemsTheSame(a: RideRequest, b: RideRequest)=a.id==b.id; override fun areContentsTheSame(a: RideRequest, b: RideRequest)=a==b } }
 }
