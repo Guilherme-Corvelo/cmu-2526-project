@@ -75,38 +75,49 @@
         
 
         <!-- Register-only fields -->
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/til_name"
+        <LinearLayout
+            android:id="@+id/layout_register_only"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Display Name"
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-            android:layout_marginBottom="12dp"
+            android:orientation="vertical"
             android:visibility="gone">
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_name"
+
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textPersonName"/>
-        </com.google.android.material.textfield.TextInputLayout>
+                android:hint="Display Name"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                android:layout_marginBottom="12dp">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textPersonName"/>
+            </com.google.android.material.textfield.TextInputLayout>
 
-        <LinearLayout
-            android:id="@+id/layout_driver_toggle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="12dp"
-            android:visibility="gone">
-            <TextView
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="I am a driver"/>
-            <Switch
-                android:id="@+id/switch_driver"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <Button
+                    android:id="@+id/btn_role_passenger"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Passenger"
+                    style="@style/Widget.Material3.Button.OutlinedButton"/>
+
+                <Button
+                    android:id="@+id/btn_role_driver"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Driver"
+                    style="@style/Widget.Material3.Button.OutlinedButton"/>
+            </LinearLayout>
         </LinearLayout>
 
 

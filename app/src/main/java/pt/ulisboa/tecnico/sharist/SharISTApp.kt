@@ -25,13 +25,11 @@ import pt.ulisboa.tecnico.sharist.utils.SessionManager
 class SharISTApp : Application() {
 
     val networkMonitor by lazy { NetworkMonitor(this) }
-    val sessionManager by lazy { pt.ulisboa.tecnico.sharist.utils.SessionManager(this) }
+    val sessionManager by lazy { SessionManager(this) }
 
     private val db by lazy { SharISTDatabase.getInstance(this) }
 
     private val localDataSource by lazy { LocalDataSource(db) }
-
-    val sessionManager by lazy { SessionManager(this) }
 
     val remoteDataSource: RemoteDataSource by lazy {
         // Check if google-services.json was applied by looking for the generated resource

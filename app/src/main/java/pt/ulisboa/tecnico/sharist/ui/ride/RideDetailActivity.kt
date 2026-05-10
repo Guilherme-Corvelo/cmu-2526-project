@@ -64,7 +64,7 @@ class RideDetailViewModel(
     }
 
     private suspend fun checkWeather(ride: Ride) {
-        if (ride.weatherCondition == null || ride.weatherCondition.type == WeatherType.NONE) return
+        if (ride.weatherCondition.type == WeatherType.NONE) return
 
         // Map origin to nearest IPMA district (simplified: default to Lisbon)
         val locationId = pt.ulisboa.tecnico.sharist.utils.IpmaDistrict.LISBOA
