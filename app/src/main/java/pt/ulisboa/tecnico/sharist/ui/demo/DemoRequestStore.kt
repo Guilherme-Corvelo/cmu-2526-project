@@ -1,0 +1,57 @@
+package pt.ulisboa.tecnico.sharist.ui.demo
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import pt.ulisboa.tecnico.sharist.data.model.RequestStatus
+import pt.ulisboa.tecnico.sharist.data.model.RideRequest
+import java.util.Date
+import java.util.UUID
+
+object DemoRequestStore {
+    const val DEMO_CLIENT_ID = "demo_client_uid"
+    const val DEMO_CLIENT_NAME = "Demo Client"
+    const val DEMO_DRIVER_ID = "demo_driver_uid"
+    const val DEMO_DRIVER_NAME = "Demo Driver"
+
+    val requests = MutableStateFlow(
+        listOf(
+            RideRequest(
+                id = "demo_req_1",
+                passengerId = DEMO_CLIENT_ID,
+                passengerName = DEMO_CLIENT_NAME,
+                origin = "IST Alameda",
+                destination = "Cais do Sodre",
+                requestedTime = Date(System.currentTimeMillis() + 20 * 60 * 1000),
+                estimatedPrice = 4.5,
+                status = RequestStatus.OPEN,
+                createdAt = Date()
+            )
+        )
+    )
+
+    fun submitRequest(origin: String, destination: String) {
+        requests.value = listOf(
+            RideRequest(
+                id = "demo_req_${UUID.randomUUID()}",
+                passengerId = DEMO_CLIENT_ID,
+                passengerName = DEMO_CLIENT_NAME,
+                origin = origin,
+                destination = destination,
+                requestedTime = Date(),
+                estimatedPrice = 3.5,
+                status = RequestStatus.OPEN,
+                createdAt = Date()
+            )
+        ) + requests.value
+    }
+
+    fun acceptRequest(requestId: String) {
+        requests.value = requests.value.map {
+            if (it.id == requestId && it.status == RequestStatus.OPEN) it.copy(
+                status = RequestStatus.ACCEPTED,
+                driverId = DEMO_DRIVER_ID,
+                driverName = DEMO_DRIVER_NAME,
+                driverRating = 4.8
+            ) else it
+        }
+    }
+}

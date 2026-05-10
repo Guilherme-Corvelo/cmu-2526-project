@@ -13,6 +13,7 @@ import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.User
 import pt.ulisboa.tecnico.sharist.data.repository.UserRepository
 import pt.ulisboa.tecnico.sharist.ui.MainActivity
+import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
 import pt.ulisboa.tecnico.sharist.utils.SessionManager
 
 class AuthViewModel(private val userRepo: UserRepository, private val session: SessionManager) : ViewModel() {
@@ -20,10 +21,10 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
     private val _state = MutableLiveData<State>(State.Idle)
     val state: LiveData<State> = _state
     fun signIn(email: String, password: String) { _state.value = State.Loading; viewModelScope.launch { runCatching { userRepo.signIn(email, password) }
-        .onSuccess { r -> val uid = r.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }; val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }; session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName); _state.value = State.Success }
+        .onSuccess { r -> val uid = r.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }; val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }; session.forceDemoMode = false; session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName); _state.value = State.Success }
         .onFailure { _state.value = State.Error(it.message ?: "Login failed") } } }
     fun register(email: String, password: String, name: String, isDriver: Boolean) { _state.value = State.Loading; viewModelScope.launch { runCatching { val r = userRepo.register(email,password); val uid = r.user?.uid ?: error("No UID"); userRepo.createProfile(User(uid = uid, displayName = name, email = email, isDriver = isDriver)); uid }
-        .onSuccess { uid -> session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name); _state.value = State.Success }
+        .onSuccess { uid -> session.forceDemoMode = false; session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name); _state.value = State.Success }
         .onFailure { _state.value = State.Error(it.message ?: "Registration failed") } } }
 }
 
@@ -32,12 +33,40 @@ class AuthActivity : AppCompatActivity() {
     private var isLoginMode = true
     private var selectedDriver = false
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContentView(R.layout.activity_auth)
+        val app = application as SharISTApp
         val tabLogin = findViewById<Button>(R.id.tab_login); val tabRegister = findViewById<Button>(R.id.tab_register); val etEmail = findViewById<EditText>(R.id.et_email); val etPassword = findViewById<EditText>(R.id.et_password); val registerGroup = findViewById<View>(R.id.layout_register_only); val etName = findViewById<EditText>(R.id.et_name); val btnPassenger = findViewById<Button>(R.id.btn_role_passenger); val btnDriver = findViewById<Button>(R.id.btn_role_driver); val tvError = findViewById<TextView>(R.id.tv_error); val progressBar = findViewById<ProgressBar>(R.id.progress_bar); val btnSubmit = findViewById<Button>(R.id.btn_submit)
+        val tvDemoHint = findViewById<TextView>(R.id.tv_demo_hint)
+        val layoutDemoButtons = findViewById<View>(R.id.layout_demo_buttons)
+        val btnDemoClient = findViewById<Button>(R.id.btn_demo_client)
+        val btnDemoDriver = findViewById<Button>(R.id.btn_demo_driver)
+
         fun setRole(driver: Boolean) { selectedDriver = driver; btnPassenger.alpha = if (!driver) 1f else 0.4f; btnDriver.alpha = if (driver) 1f else 0.4f }
-        fun switchMode(login: Boolean) { isLoginMode = login; registerGroup.visibility = if (login) View.GONE else View.VISIBLE; btnSubmit.text = if (login) "Sign In" else "Create Account"; tabLogin.alpha = if (login) 1f else 0.4f; tabRegister.alpha = if (!login) 1f else 0.4f; tvError.visibility = View.GONE }
+        fun switchMode(login: Boolean) {
+            isLoginMode = login
+            registerGroup.visibility = if (login) View.GONE else View.VISIBLE
+            btnSubmit.text = if (login) "Sign In" else "Create Account"
+            tabLogin.alpha = if (login) 1f else 0.4f
+            tabRegister.alpha = if (!login) 1f else 0.4f
+            tvDemoHint.visibility = if (login) View.VISIBLE else View.GONE
+            layoutDemoButtons.visibility = if (login) View.VISIBLE else View.GONE
+            tvError.visibility = View.GONE
+        }
         setRole(false); switchMode(true)
         btnPassenger.setOnClickListener { setRole(false) }; btnDriver.setOnClickListener { setRole(true) }; tabLogin.setOnClickListener { switchMode(true) }; tabRegister.setOnClickListener { switchMode(false) }
         btnSubmit.setOnClickListener { if (isLoginMode) vm.signIn(etEmail.text.toString().trim(), etPassword.text.toString()) else vm.register(etEmail.text.toString().trim(), etPassword.text.toString(), etName.text.toString().trim(), selectedDriver) }
+
+        btnDemoClient.setOnClickListener {
+            app.sessionManager.forceDemoMode = true
+            app.sessionManager.save(DemoRequestStore.DEMO_CLIENT_ID, SessionManager.ROLE_PASSENGER, DemoRequestStore.DEMO_CLIENT_NAME)
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        }
+
+        btnDemoDriver.setOnClickListener {
+            app.sessionManager.forceDemoMode = true
+            app.sessionManager.save(DemoRequestStore.DEMO_DRIVER_ID, SessionManager.ROLE_DRIVER, DemoRequestStore.DEMO_DRIVER_NAME)
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        }
+
         vm.state.observe(this) { state -> progressBar.visibility = if (state is AuthViewModel.State.Loading) View.VISIBLE else View.GONE; btnSubmit.isEnabled = state !is AuthViewModel.State.Loading; when (state) { is AuthViewModel.State.Success -> startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)); is AuthViewModel.State.Error -> { tvError.visibility = View.VISIBLE; tvError.text = state.msg }; else -> Unit } }
     }
 }

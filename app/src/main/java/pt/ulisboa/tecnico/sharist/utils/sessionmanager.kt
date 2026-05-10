@@ -23,6 +23,10 @@ class SessionManager(context: Context) {
     val isDriver get() = role == ROLE_DRIVER
     val isPassenger get() = role == ROLE_PASSENGER
     val isLoggedIn get() = uid != null && role != null
+    var forceDemoMode: Boolean
+        get() = prefs.getBoolean("force_demo_mode", false)
+        set(v) = prefs.edit().putBoolean("force_demo_mode", v).apply()
+
     fun save(uid: String, role: String, name: String) { this.uid = uid; this.role = role; this.displayName = name }
     fun clear() = prefs.edit().clear().apply()
 }
