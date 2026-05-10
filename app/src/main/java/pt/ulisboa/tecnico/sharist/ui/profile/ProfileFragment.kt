@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.ui.auth.AuthActivity
+import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
 
 class ProfileFragment : Fragment() {
 
@@ -35,7 +36,7 @@ class ProfileFragment : Fragment() {
                 tvEmail.text = user?.email ?: getString(R.string.unknown_email)
             }
         } else {
-            tvEmail.text = getString(R.string.not_logged_in)
+            tvEmail.text = "${DemoRequestStore.DEMO_CLIENT_NAME} (demo_client@demo.app)"
         }
 
         btnLogout.setOnClickListener {
