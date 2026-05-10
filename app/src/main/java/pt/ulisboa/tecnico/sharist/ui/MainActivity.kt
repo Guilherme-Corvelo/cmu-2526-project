@@ -16,8 +16,14 @@ class MainActivity : AppCompatActivity() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_nav)
         val navHost = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         val navController = navHost.navController
-        if (session.isDriver) { bottomNav.inflateMenu(R.menu.bottom_nav_driver); navController.setGraph(R.navigation.nav_graph_driver) }
-        else { bottomNav.inflateMenu(R.menu.bottom_nav_passenger); navController.setGraph(R.navigation.nav_graph_passenger) }
+        bottomNav.menu.clear()
+        if (session.isDriver) {
+            navController.setGraph(R.navigation.nav_graph_driver)
+            bottomNav.inflateMenu(R.menu.bottom_nav_driver)
+        } else {
+            navController.setGraph(R.navigation.nav_graph_passenger)
+            bottomNav.inflateMenu(R.menu.bottom_nav_passenger)
+        }
         bottomNav.setupWithNavController(navController)
     }
 }
