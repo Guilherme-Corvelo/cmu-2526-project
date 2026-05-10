@@ -24,6 +24,28 @@ object DemoRequestStore {
                 estimatedPrice = 4.5,
                 status = RequestStatus.OPEN,
                 createdAt = Date()
+            ),
+            RideRequest(
+                id = "demo_req_2",
+                passengerId = "demo_client_2",
+                passengerName = "Demo Client 2",
+                origin = "Saldanha",
+                destination = "Campo Grande",
+                requestedTime = Date(System.currentTimeMillis() + 35 * 60 * 1000),
+                estimatedPrice = 5.1,
+                status = RequestStatus.OPEN,
+                createdAt = Date()
+            ),
+            RideRequest(
+                id = "demo_req_3",
+                passengerId = "demo_client_3",
+                passengerName = "Demo Client 3",
+                origin = "Alvalade",
+                destination = "Oriente",
+                requestedTime = Date(System.currentTimeMillis() + 50 * 60 * 1000),
+                estimatedPrice = 6.0,
+                status = RequestStatus.OPEN,
+                createdAt = Date()
             )
         )
     )
@@ -52,6 +74,12 @@ object DemoRequestStore {
                 driverName = DEMO_DRIVER_NAME,
                 driverRating = 4.8
             ) else it
+        }
+    }
+
+    fun denyRequest(requestId: String) {
+        requests.value = requests.value.map {
+            if (it.id == requestId && it.status == RequestStatus.OPEN) it.copy(status = RequestStatus.CANCELLED) else it
         }
     }
 }
