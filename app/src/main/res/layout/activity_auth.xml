@@ -125,19 +125,17 @@
             android:id="@+id/tv_demo_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Quick demo access (no registration needed)"
+            android:text="Or continue in demo mode (no registration needed)"
             android:gravity="center"
             android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"
-            android:visibility="gone"/>
+            android:layout_marginBottom="8dp"/>
 
         <LinearLayout
             android:id="@+id/layout_demo_buttons"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="12dp"
-            android:visibility="gone">
+            android:layout_marginBottom="12dp">
 
             <Button
                 android:id="@+id/btn_demo_client"
