@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
@@ -26,7 +27,16 @@ class AvailableRequestsFragment : Fragment() {
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
         val adapter = DriverRequestAdapter(
-            onAccept = { DemoRequestStore.acceptRequest(it.id) },
+            onAccept = {
+                val accepted = DemoRequestStore.acceptRequest(it.id)
+                if (!accepted) {
+                    Toast.makeText(
+                        requireContext(),
+                        "You can only have one active ride at a time. Finish it first.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            },
             onDeny = { DemoRequestStore.denyRequest(it.id) }
         )
         recycler.layoutManager = LinearLayoutManager(requireContext())
@@ -35,7 +45,11 @@ class AvailableRequestsFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             DemoRequestStore.requests.map { list -> list.filter { it.status.name == "OPEN" } }.collect {
                 adapter.submitList(it)
-                tvEmpty.text = "No open demo requests"
+                tvEmpty.text = if (DemoRequestStore.hasActiveRideForDriver()) {
+                    "Finish your current ride to accept another one"
+                } else {
+                    "No open demo requests"
+                }
                 tvEmpty.visibility = if (it.isEmpty()) View.VISIBLE else View.GONE
             }
         }
