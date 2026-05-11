@@ -50,7 +50,18 @@ object DemoRequestStore {
         )
     )
 
-    fun submitRequest(origin: String, destination: String) {
+    fun canPassengerCreateRequest(passengerId: String = DEMO_CLIENT_ID): Boolean {
+        return requests.value.none {
+            it.passengerId == passengerId && (it.status == RequestStatus.OPEN || it.status == RequestStatus.ACCEPTED)
+        }
+    }
+
+    fun hasActiveRideForDriver(driverId: String = DEMO_DRIVER_ID): Boolean {
+        return requests.value.any { it.driverId == driverId && it.status == RequestStatus.ACCEPTED }
+    }
+
+    fun submitRequest(origin: String, destination: String): Boolean {
+        if (!canPassengerCreateRequest()) return false
         requests.value = listOf(
             RideRequest(
                 id = "demo_req_${UUID.randomUUID()}",
@@ -64,22 +75,40 @@ object DemoRequestStore {
                 createdAt = Date()
             )
         ) + requests.value
+        return true
     }
 
-    fun acceptRequest(requestId: String) {
+    fun acceptRequest(requestId: String): Boolean {
+        if (hasActiveRideForDriver()) return false
+        var accepted = false
         requests.value = requests.value.map {
-            if (it.id == requestId && it.status == RequestStatus.OPEN) it.copy(
-                status = RequestStatus.ACCEPTED,
-                driverId = DEMO_DRIVER_ID,
-                driverName = DEMO_DRIVER_NAME,
-                driverRating = 4.8
-            ) else it
+            if (it.id == requestId && it.status == RequestStatus.OPEN) {
+                accepted = true
+                it.copy(
+                    status = RequestStatus.ACCEPTED,
+                    driverId = DEMO_DRIVER_ID,
+                    driverName = DEMO_DRIVER_NAME,
+                    driverRating = 4.8
+                )
+            } else it
         }
+        return accepted
     }
 
     fun denyRequest(requestId: String) {
         requests.value = requests.value.map {
             if (it.id == requestId && it.status == RequestStatus.OPEN) it.copy(status = RequestStatus.CANCELLED) else it
         }
+    }
+
+    fun completeRequest(requestId: String): Boolean {
+        var completed = false
+        requests.value = requests.value.map {
+            if (it.id == requestId && it.driverId == DEMO_DRIVER_ID && it.status == RequestStatus.ACCEPTED) {
+                completed = true
+                it.copy(status = RequestStatus.COMPLETED)
+            } else it
+        }
+        return completed
     }
 }

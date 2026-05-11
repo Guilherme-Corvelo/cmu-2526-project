@@ -25,7 +25,15 @@ class RequestRideFragment : Fragment() {
                 Toast.makeText(requireContext(), "Fill origin and destination", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            DemoRequestStore.submitRequest(origin, destination)
+            val created = DemoRequestStore.submitRequest(origin, destination)
+            if (!created) {
+                Toast.makeText(
+                    requireContext(),
+                    "You already have an active request/ride. Complete or cancel it first.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@setOnClickListener
+            }
             etOrigin.text?.clear()
             etDestination.text?.clear()
             Toast.makeText(requireContext(), "Demo request created", Toast.LENGTH_SHORT).show()
