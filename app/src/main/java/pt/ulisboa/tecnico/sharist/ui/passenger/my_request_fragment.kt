@@ -60,8 +60,13 @@ class MyRequestAdapter : ListAdapter<RideRequest, MyRequestAdapter.VH>(DIFF) {
         h.tvRoute.text = "${r.origin} → ${r.destination}"
         h.tvTime.text = r.requestedTime?.let { dateFmt.format(it) } ?: "—"
         h.tvPrice.text = "€ %.2f".format(r.estimatedPrice)
-        h.tvDriver.text = r.driverName?.let { "Driver: $it" } ?: "Waiting for driver"
-        h.tvStatus.text = r.status.name
+        h.tvDriver.text = r.driverName?.let { "Driver: $it" } ?: "Looking for nearby driver"
+        h.tvStatus.text = when (r.status) {
+            RequestStatus.OPEN -> "Searching for driver"
+            RequestStatus.ACCEPTED -> "Driver on the way"
+            RequestStatus.COMPLETED -> "Trip completed"
+            RequestStatus.CANCELLED -> "Request cancelled"
+        }
         h.btnCancel.visibility = View.GONE
         h.btnRate.visibility = if (r.status == RequestStatus.COMPLETED) View.VISIBLE else View.GONE
     }
