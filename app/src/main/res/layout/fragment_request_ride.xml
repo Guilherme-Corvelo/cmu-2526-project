@@ -1,2 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Request a Ride"/><EditText android:id="@+id/et_origin" android:layout_width="match_parent" android:layout_height="wrap_content"/><EditText android:id="@+id/et_destination" android:layout_width="match_parent" android:layout_height="wrap_content"/><TextView android:id="@+id/tv_selected_time" android:layout_width="match_parent" android:layout_height="wrap_content"/><Button android:id="@+id/btn_pick_time" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Change"/><TextView android:id="@+id/tv_estimated_price" android:layout_width="match_parent" android:layout_height="wrap_content"/><TextView android:id="@+id/tv_error" android:layout_width="match_parent" android:layout_height="wrap_content"/><ProgressBar android:id="@+id/progress_bar" android:layout_width="wrap_content" android:layout_height="wrap_content"/><Button android:id="@+id/btn_request" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Request Ride"/></LinearLayout></ScrollView>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@android:color/white">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Where to?"
+            android:textStyle="bold"
+            android:textSize="22sp"
+            android:layout_marginBottom="12dp"/>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="From"
+                    android:textStyle="bold"
+                    android:textSize="13sp"/>
+
+                <EditText
+                    android:id="@+id/et_origin"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Pickup location"
+                    android:importantForAutofill="yes"
+                    android:inputType="textPostalAddress"
+                    android:layout_marginBottom="10dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="To"
+                    android:textStyle="bold"
+                    android:textSize="13sp"/>
+
+                <EditText
+                    android:id="@+id/et_destination"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Destination"
+                    android:importantForAutofill="yes"
+                    android:inputType="textPostalAddress"/>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:id="@+id/tv_selected_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Now"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"/>
+
+        <Button
+            android:id="@+id/btn_pick_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Change"
+            android:layout_marginTop="8dp"/>
+
+        <TextView
+            android:id="@+id/tv_estimated_price"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Estimated price: --"
+            android:layout_marginTop="12dp"/>
+
+        <TextView
+            android:id="@+id/tv_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#B00020"
+            android:visibility="gone"
+            android:layout_marginTop="4dp"/>
+
+        <ProgressBar
+            android:id="@+id/progress_bar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"/>
+
+        <Button
+            android:id="@+id/btn_request"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Confirm Request"
+            android:layout_marginTop="16dp"/>
+    </LinearLayout>
+</ScrollView>
