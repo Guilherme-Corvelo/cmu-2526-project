@@ -15,17 +15,6 @@ object DemoRequestStore {
     val requests = MutableStateFlow(
         listOf(
             RideRequest(
-                id = "demo_req_1",
-                passengerId = DEMO_CLIENT_ID,
-                passengerName = DEMO_CLIENT_NAME,
-                origin = "IST Alameda",
-                destination = "Cais do Sodre",
-                requestedTime = Date(System.currentTimeMillis() + 20 * 60 * 1000),
-                estimatedPrice = 4.5,
-                status = RequestStatus.OPEN,
-                createdAt = Date()
-            ),
-            RideRequest(
                 id = "demo_req_2",
                 passengerId = "demo_client_2",
                 passengerName = "Demo Client 2",
@@ -60,7 +49,7 @@ object DemoRequestStore {
         return requests.value.any { it.driverId == driverId && it.status == RequestStatus.ACCEPTED }
     }
 
-    fun submitRequest(origin: String, destination: String): Boolean {
+    fun submitRequest(origin: String, destination: String, requestedTime: Date = Date()): Boolean {
         if (!canPassengerCreateRequest()) return false
         requests.value = listOf(
             RideRequest(
@@ -69,7 +58,7 @@ object DemoRequestStore {
                 passengerName = DEMO_CLIENT_NAME,
                 origin = origin,
                 destination = destination,
-                requestedTime = Date(),
+                requestedTime = requestedTime,
                 estimatedPrice = 3.5,
                 status = RequestStatus.OPEN,
                 createdAt = Date()
