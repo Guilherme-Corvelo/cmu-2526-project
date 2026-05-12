@@ -66,6 +66,27 @@
         </com.google.android.material.card.MaterialCardView>
 
         <TextView
+            android:id="@+id/tv_map_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Map preview (demo locations only)"
+            android:textStyle="bold"
+            android:layout_marginTop="14dp"/>
+
+        <org.osmdroid.views.MapView
+            android:id="@+id/request_map"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="8dp" />
+
+        <TextView
+            android:id="@+id/tv_map_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Type From/To using demo names like IST Alameda or Oriente."
+            android:layout_marginTop="6dp"/>
+
+        <TextView
             android:id="@+id/tv_selected_time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -79,29 +100,6 @@
             android:layout_height="wrap_content"
             android:text="Change"
             android:layout_marginTop="8dp"/>
-
-        <TextView
-            android:id="@+id/tv_estimated_price"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Estimated price: --"
-            android:layout_marginTop="12dp"/>
-
-        <TextView
-            android:id="@+id/tv_error"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#B00020"
-            android:visibility="gone"
-            android:layout_marginTop="4dp"/>
-
-        <ProgressBar
-            android:id="@+id/progress_bar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"
-            android:visibility="gone"/>
 
         <Button
             android:id="@+id/btn_request"
