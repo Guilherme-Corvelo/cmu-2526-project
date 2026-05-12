@@ -75,6 +75,9 @@ class HomeFragment : Fragment() {
         recyclerView  = view.findViewById(R.id.recycler_rides)
         tvEmpty       = view.findViewById(R.id.tv_empty)
         progressBar   = view.findViewById(R.id.progress_bar)
+        view.findViewById<Button>(R.id.btn_open_map).setOnClickListener {
+            findNavController().navigate(R.id.action_home_to_ride_map)
+        }
 
         setupRecycler()
         setupSearch()
