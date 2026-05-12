@@ -1,1 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?><menu xmlns:android="http://schemas.android.com/apk/res/android"><item android:id="@+id/requestRideFragment" android:title="Request"/><item android:id="@+id/myRequestsFragment" android:title="My Rides"/><item android:id="@+id/profileFragment" android:title="Profile"/></menu>
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/requestRideFragment"
+        android:title="Request" />
+    <item
+        android:id="@+id/rideMapFragment"
+        android:title="Map" />
+    <item
+        android:id="@+id/myRequestsFragment"
+        android:title="My Rides" />
+    <item
+        android:id="@+id/profileFragment"
+        android:title="Profile" />
+</menu>
