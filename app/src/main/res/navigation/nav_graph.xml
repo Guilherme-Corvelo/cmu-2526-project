@@ -12,7 +12,15 @@
         <action
             android:id="@+id/action_home_to_ride_detail"
             app:destination="@id/rideDetailActivity"/>
+        <action
+            android:id="@+id/action_home_to_ride_map"
+            app:destination="@id/rideMapFragment"/>
     </fragment>
+
+    <fragment
+        android:id="@+id/rideMapFragment"
+        android:name="pt.ulisboa.tecnico.sharist.ui.home.RideMapFragment"
+        android:label="Map"/>
 
     <fragment
         android:id="@+id/myRidesFragment"

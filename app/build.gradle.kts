@@ -83,6 +83,7 @@ dependencies {
     // ── Coroutines ───────────────────────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.osmdroid.android)
 
     // ── Testing ──────────────────────────────────────────────────────────────
     testImplementation(libs.junit)
