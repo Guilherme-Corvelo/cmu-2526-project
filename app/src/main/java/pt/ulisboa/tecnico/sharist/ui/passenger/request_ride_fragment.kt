@@ -106,8 +106,18 @@ class RequestRideFragment : Fragment() {
         view.findViewById<Button>(R.id.btn_request).setOnClickListener {
             val origin = etOrigin.text.toString().trim()
             val destination = etDestination.text.toString().trim()
+            val originPoint = MapDemoData.pointFor(origin)
+            val destinationPoint = MapDemoData.pointFor(destination)
             if (origin.isBlank() || destination.isBlank()) {
                 Toast.makeText(requireContext(), "Fill origin and destination", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (originPoint == null || destinationPoint == null) {
+                Toast.makeText(
+                    requireContext(),
+                    "Use valid demo locations: IST Alameda, Saldanha, Campo Grande, or Oriente.",
+                    Toast.LENGTH_LONG
+                ).show()
                 return@setOnClickListener
             }
             val created = DemoRequestStore.submitRequest(origin, destination, selectedTime.time)
