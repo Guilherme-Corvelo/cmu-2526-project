@@ -34,7 +34,7 @@ data class RideRequest(
     @ServerTimestamp val createdAt: Date? = null
 )
 
-enum class RequestStatus { OPEN, ACCEPTED, COMPLETED, CANCELLED }
+enum class RequestStatus { OPEN, ACCEPTED, EN_ROUTE, PICKED_UP, COMPLETED, CANCELLED }
 
 data class Review(
     @DocumentId val id: String = "",

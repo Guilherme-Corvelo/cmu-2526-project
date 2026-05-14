@@ -91,10 +91,11 @@ class MyRequestAdapter(
         h.tvDriver.text = r.driverName?.let { "Driver: $it" } ?: "Looking for nearby driver"
         h.tvStatus.text = when (r.status) {
             RequestStatus.OPEN -> "Searching for driver"
-            RequestStatus.ACCEPTED -> "Driver on the way"
+            RequestStatus.ACCEPTED -> "Driver accepted"
+            RequestStatus.EN_ROUTE -> "Driver on the way"
+            RequestStatus.PICKED_UP -> "In progress"
             RequestStatus.COMPLETED -> "Trip completed"
             RequestStatus.CANCELLED -> "Request cancelled"
-            else -> "Unknown status"
         }
         h.btnCancel.visibility = if (r.status == RequestStatus.OPEN) View.VISIBLE else View.GONE
         h.btnCancel.setOnClickListener { onCancel(r) }

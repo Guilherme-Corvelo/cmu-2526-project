@@ -126,6 +126,10 @@ class RideRequestRepository(
         remote.cancelRequest(requestId)
     }
 
+    suspend fun updateRequestStatus(requestId: String, status: RequestStatus): Result<Unit> = runCatching {
+        remote.updateRequestStatus(requestId, status)
+    }
+
     suspend fun submitReview(review: Review) {
         remote.submitReview(review)
     }

@@ -33,5 +33,6 @@ interface RemoteDataSource {
     suspend fun createRequest(request: RideRequest): String
     suspend fun cancelRequest(requestId: String)
     suspend fun completeRequest(requestId: String)
+    suspend fun updateRequestStatus(requestId: String, status: RequestStatus)
     suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double)
 }

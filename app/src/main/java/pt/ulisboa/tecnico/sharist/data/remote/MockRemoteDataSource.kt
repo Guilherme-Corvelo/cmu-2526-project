@@ -92,6 +92,12 @@ class MockRemoteDataSource : RemoteDataSource {
         }
     }
 
+    override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) {
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
+            if (it.id == requestId) it.copy(status = status) else it
+        }
+    }
+
     override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
         DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
             if (it.id == requestId) it.copy(

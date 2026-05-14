@@ -153,6 +153,9 @@ class FirebaseDataSource(
     }
     override suspend fun cancelRequest(requestId: String) { requestsCol.document(requestId).update("status", RequestStatus.CANCELLED.name).await() }
     override suspend fun completeRequest(requestId: String) { requestsCol.document(requestId).update("status", RequestStatus.COMPLETED.name).await() }
+    override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) {
+        requestsCol.document(requestId).update("status", status.name).await()
+    }
 
     override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
         db.runTransaction { tx ->

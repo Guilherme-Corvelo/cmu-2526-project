@@ -18,18 +18,23 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import pt.ulisboa.tecnico.sharist.R
+import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.RequestStatus
 import pt.ulisboa.tecnico.sharist.data.model.RideRequest
-import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
+import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 
 class MyActiveRidesFragment : Fragment() {
+    private lateinit var requestRepo: RideRequestRepository
     private lateinit var mapView: MapView
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_my_active_rides, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        val app = requireActivity().application as SharISTApp
+        requestRepo = app.requestRepository
+        val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_rides)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
 
@@ -41,10 +46,9 @@ class MyActiveRidesFragment : Fragment() {
         mapView.controller.setZoom(13.0)
 
         val adapter = ActiveRideAdapter(
-            onFinish = {
-                val completed = DemoRequestStore.completeRequest(it.id)
-                if (!completed) {
-                    Toast.makeText(requireContext(), "Unable to finish ride", Toast.LENGTH_SHORT).show()
+            onUpdateStatus = { req, newStatus ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    requestRepo.updateRequestStatus(req.id, newStatus)
                 }
             }
         )
@@ -52,8 +56,9 @@ class MyActiveRidesFragment : Fragment() {
         recycler.adapter = adapter
 
         viewLifecycleOwner.lifecycleScope.launch {
-            DemoRequestStore.requests
-                .map { list -> list.filter { it.driverId == DemoRequestStore.DEMO_DRIVER_ID && it.status == RequestStatus.ACCEPTED } }
+            val activeStatuses = listOf(RequestStatus.ACCEPTED, RequestStatus.EN_ROUTE, RequestStatus.PICKED_UP)
+            requestRepo.getDriverRequests(session.uid ?: "")
+                .map { list -> list.filter { it.status in activeStatuses } }
                 .collect {
                     adapter.submitList(it)
                     renderAcceptedRoute(it.firstOrNull())
@@ -105,7 +110,7 @@ class MyActiveRidesFragment : Fragment() {
 }
 
 class ActiveRideAdapter(
-    private val onFinish: (RideRequest) -> Unit
+    private val onUpdateStatus: (RideRequest, RequestStatus) -> Unit
 ) : androidx.recyclerview.widget.ListAdapter<RideRequest, ActiveRideAdapter.VH>(DIFF) {
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
@@ -121,10 +126,18 @@ class ActiveRideAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val ride = getItem(position)
         holder.tvRoute.text = "${ride.passengerName}: ${ride.origin} → ${ride.destination}"
-        holder.tvDriver.text = "Active ride in progress"
+        
+        val (statusText, btnText, nextStatus) = when (ride.status) {
+            RequestStatus.ACCEPTED -> Triple("Accepted - Get moving!", "Start Trip", RequestStatus.EN_ROUTE)
+            RequestStatus.EN_ROUTE -> Triple("En route to pickup", "Confirm Pickup", RequestStatus.PICKED_UP)
+            RequestStatus.PICKED_UP -> Triple("Passenger onboard", "Finish Ride", RequestStatus.COMPLETED)
+            else -> Triple("Active ride", "Next Step", RequestStatus.COMPLETED)
+        }
+
+        holder.tvDriver.text = statusText
         holder.btnCancel.visibility = View.VISIBLE
-        holder.btnCancel.text = "Finish Ride"
-        holder.btnCancel.setOnClickListener { onFinish(ride) }
+        holder.btnCancel.text = btnText
+        holder.btnCancel.setOnClickListener { onUpdateStatus(ride, nextStatus) }
         holder.btnRate.visibility = View.GONE
     }
 
