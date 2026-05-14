@@ -42,7 +42,7 @@ class FirebaseDataSource(
         val listener = query.addSnapshotListener { snap, err ->
             if (err != null) close(err)
             else {
-                val allRides = snap?.toObjects(Ride::class.java) ?: emptyList()
+                val allRides = snap?.toObjects(Ride::class.java)?.filterNotNull() ?: emptyList()
                 // Apply further filters that are harder to do in a single Firestore query
                 val filtered = allRides.filter { ride ->
                     (filter.origin.isBlank() || ride.origin.contains(filter.origin, ignoreCase = true)) &&
@@ -60,7 +60,7 @@ class FirebaseDataSource(
 
     override fun observeDriverRides(driverId: String): Flow<List<Ride>> = callbackFlow {
         val listener = ridesCol.whereEqualTo("driverId", driverId)
-            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(Ride::class.java) ?: emptyList()) }
+            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(Ride::class.java)?.filterNotNull() ?: emptyList()) }
         awaitClose { listener.remove() }
     }
 
@@ -94,13 +94,13 @@ class FirebaseDataSource(
 
     override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> = callbackFlow {
         val listener = bookingsCol.whereEqualTo("passengerId", passengerId)
-            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(Booking::class.java) ?: emptyList()) }
+            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(Booking::class.java)?.filterNotNull() ?: emptyList()) }
         awaitClose { listener.remove() }
     }
 
     override fun observeRideBookings(rideId: String): Flow<List<Booking>> = callbackFlow {
         val listener = bookingsCol.whereEqualTo("rideId", rideId)
-            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(Booking::class.java) ?: emptyList()) }
+            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(Booking::class.java)?.filterNotNull() ?: emptyList()) }
         awaitClose { listener.remove() }
     }
 
@@ -110,8 +110,8 @@ class FirebaseDataSource(
             .addSnapshotListener { snap, err ->
                 if (err != null) close(err)
                 else {
-                    val requests = snap?.toObjects(RideRequest::class.java) ?: emptyList()
-                    trySend(requests.sortedBy { it.requestedTime })
+                    val requests = snap?.toObjects(RideRequest::class.java)?.filterNotNull() ?: emptyList()
+                    trySend(requests.sortedBy { it.requestedTime?.time ?: Long.MAX_VALUE })
                 }
             }
         awaitClose { listener.remove() }
@@ -122,8 +122,8 @@ class FirebaseDataSource(
             .addSnapshotListener { snap, err ->
                 if (err != null) close(err)
                 else {
-                    val requests = snap?.toObjects(RideRequest::class.java) ?: emptyList()
-                    trySend(requests.sortedByDescending { it.createdAt })
+                    val requests = snap?.toObjects(RideRequest::class.java)?.filterNotNull() ?: emptyList()
+                    trySend(requests.sortedByDescending { it.createdAt?.time ?: 0L })
                 }
             }
         awaitClose { listener.remove() }
@@ -134,8 +134,8 @@ class FirebaseDataSource(
             .addSnapshotListener { snap, err ->
                 if (err != null) close(err)
                 else {
-                    val requests = snap?.toObjects(RideRequest::class.java) ?: emptyList()
-                    trySend(requests.sortedByDescending { it.createdAt })
+                    val requests = snap?.toObjects(RideRequest::class.java)?.filterNotNull() ?: emptyList()
+                    trySend(requests.sortedByDescending { it.createdAt?.time ?: 0L })
                 }
             }
         awaitClose { listener.remove() }

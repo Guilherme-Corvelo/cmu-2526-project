@@ -57,10 +57,8 @@ class SharISTApp : Application() {
         object : RemoteDataSource {
             private val delegate: RemoteDataSource
                 get() {
-                    val useFirebase = !sessionManager.forceDemoMode && firebaseInstance.value != null
-                    
-                    if (useFirebase) {
-                        // Once we know Firebase is initialized, we can check for a real user
+                    val firebase = firebaseInstance.value
+                    if (firebase != null) {
                         try {
                             if (FirebaseAuth.getInstance().currentUser != null && sessionManager.forceDemoMode) {
                                 Log.i("SharISTApp", "Detected real user, disabling forceDemoMode.")
@@ -69,10 +67,10 @@ class SharISTApp : Application() {
                         } catch (e: Exception) {
                             Log.e("SharISTApp", "Error checking current user", e)
                         }
-                        return firebaseInstance.value!!
-                    } else {
-                        return mockInstance.value
                     }
+
+                    val useFirebase = !sessionManager.forceDemoMode && firebase != null
+                    return if (useFirebase) firebase else mockInstance.value
                 }
 
             override val currentUid: String? get() = delegate.currentUid
