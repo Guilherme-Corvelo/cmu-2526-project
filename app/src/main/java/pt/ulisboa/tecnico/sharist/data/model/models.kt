@@ -23,7 +23,7 @@ data class RideRequest(
     val passengerName: String = "",
     val origin: String = "",
     val destination: String = "",
-    @ServerTimestamp val requestedTime: Date? = null,
+    val requestedTime: Date? = null,
     val estimatedPrice: Double = 0.0,
     val driverId: String? = null,
     val driverName: String? = null,

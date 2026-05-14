@@ -21,17 +21,25 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import pt.ulisboa.tecnico.sharist.R
+import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.RideRequest
-import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
+import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
+
+import android.util.Log
+import kotlinx.coroutines.flow.catch
 
 class AvailableRequestsFragment : Fragment() {
     private lateinit var mapView: MapView
+    private lateinit var requestRepo: RideRequestRepository
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_available_requests, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        val app = requireActivity().application as SharISTApp
+        requestRepo = app.requestRepository
+        val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
         Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
@@ -42,34 +50,39 @@ class AvailableRequestsFragment : Fragment() {
         mapView.controller.setZoom(13.0)
 
         val adapter = DriverRequestAdapter(
-            onAccept = {
-                renderPreviewRoute(it)
-                val accepted = DemoRequestStore.acceptRequest(it.id)
-                if (!accepted) {
-                    Toast.makeText(
-                        requireContext(),
-                        "You can only have one active ride at a time. Finish it first.",
-                        Toast.LENGTH_LONG
-                    ).show()
+            onAccept = { req ->
+                renderPreviewRoute(req)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = requestRepo.acceptRequest(
+                        req.id,
+                        session.uid ?: "",
+                        session.displayName ?: "Driver",
+                        5.0
+                    )
+                    if (res.isFailure) {
+                        Toast.makeText(requireContext(), "Failed to accept: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
-            onDeny = { DemoRequestStore.denyRequest(it.id) },
+            onDeny = { /* Just ignore for now */ },
             onPreview = { renderPreviewRoute(it) }
         )
         recycler.layoutManager = LinearLayoutManager(requireContext())
         recycler.adapter = adapter
 
         viewLifecycleOwner.lifecycleScope.launch {
-            DemoRequestStore.requests.map { list -> list.filter { it.status.name == "OPEN" } }.collect {
-                adapter.submitList(it)
-                renderPreviewRoute(it.firstOrNull())
-                tvEmpty.text = if (DemoRequestStore.hasActiveRideForDriver()) {
-                    "Finish your current ride to accept another one"
-                } else {
-                    "No open demo requests"
+            requestRepo.getOpenRequests()
+                .catch { e ->
+                    Log.e("AvailableReq", "Index missing?", e)
+                    tvEmpty.visibility = View.VISIBLE
+                    tvEmpty.text = "Error: Check Logcat for index URL"
                 }
-                tvEmpty.visibility = if (it.isEmpty()) View.VISIBLE else View.GONE
-            }
+                .collect { list ->
+                    adapter.submitList(list)
+                    renderPreviewRoute(list.firstOrNull())
+                    tvEmpty.text = "No open requests available"
+                    tvEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+                }
         }
     }
 

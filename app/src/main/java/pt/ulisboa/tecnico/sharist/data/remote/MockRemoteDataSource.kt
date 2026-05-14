@@ -1,8 +1,11 @@
 package pt.ulisboa.tecnico.sharist.data.remote
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import pt.ulisboa.tecnico.sharist.data.model.*
+import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRideStore
+import java.util.UUID
 
 class MockRemoteDataSource : RemoteDataSource {
     private var _uid: String? = null
@@ -60,4 +63,43 @@ class MockRemoteDataSource : RemoteDataSource {
 
     override fun observeRideBookings(rideId: String): Flow<List<Booking>> =
         DemoRideStore.observeRideBookings(rideId)
+
+    // Ride Requests
+    override fun observeOpenRequests(): Flow<List<RideRequest>> =
+        DemoRequestStore.requests.map { list -> list.filter { it.status == RequestStatus.OPEN } }
+
+    override fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>> =
+        DemoRequestStore.requests.map { list -> list.filter { it.passengerId == passengerId } }
+
+    override fun observeDriverRequests(driverId: String): Flow<List<RideRequest>> =
+        DemoRequestStore.requests.map { list -> list.filter { it.driverId == driverId } }
+
+    override suspend fun createRequest(request: RideRequest): String {
+        val id = request.id.ifBlank { "mock_req_${UUID.randomUUID()}" }
+        DemoRequestStore.requests.value = (listOf(request.copy(id = id)) + DemoRequestStore.requests.value)
+        return id
+    }
+
+    override suspend fun cancelRequest(requestId: String) {
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
+            if (it.id == requestId) it.copy(status = RequestStatus.CANCELLED) else it
+        }
+    }
+
+    override suspend fun completeRequest(requestId: String) {
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
+            if (it.id == requestId) it.copy(status = RequestStatus.COMPLETED) else it
+        }
+    }
+
+    override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
+            if (it.id == requestId) it.copy(
+                status = RequestStatus.ACCEPTED,
+                driverId = driverId,
+                driverName = driverName,
+                driverRating = driverRating
+            ) else it
+        }
+    }
 }

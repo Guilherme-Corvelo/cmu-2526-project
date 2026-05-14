@@ -21,29 +21,57 @@ import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+import android.widget.Toast
+import pt.ulisboa.tecnico.sharist.SharISTApp
+import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
+
+import android.util.Log
+import kotlinx.coroutines.flow.catch
+
 class MyRequestsFragment : Fragment() {
+    private lateinit var requestRepo: RideRequestRepository
+
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View = i.inflate(R.layout.fragment_my_requests, c, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        val app = requireActivity().application as SharISTApp
+        requestRepo = app.requestRepository
+        val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
-        val adapter = MyRequestAdapter()
+
+        val adapter = MyRequestAdapter(
+            onCancel = { req ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = requestRepo.cancelRequest(req.id)
+                    if (res.isFailure) {
+                        Toast.makeText(requireContext(), "Error cancelling: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
         recycler.layoutManager = LinearLayoutManager(requireContext())
         recycler.adapter = adapter
 
         viewLifecycleOwner.lifecycleScope.launch {
-            DemoRequestStore.requests
-                .map { list -> list.filter { it.passengerId == DemoRequestStore.DEMO_CLIENT_ID } }
+            requestRepo.getPassengerRequests(session.uid ?: "")
+                .catch { e ->
+                    Log.e("MyRequests", "Error loading requests", e)
+                    tvEmpty.visibility = View.VISIBLE
+                    tvEmpty.text = "Error: ${e.message}"
+                }
                 .collect {
                     adapter.submitList(it)
                     tvEmpty.visibility = if (it.isEmpty()) View.VISIBLE else View.GONE
-                    tvEmpty.text = "No demo requests yet"
+                    tvEmpty.text = "No requests found"
                 }
         }
     }
 }
 
-class MyRequestAdapter : ListAdapter<RideRequest, MyRequestAdapter.VH>(DIFF) {
+class MyRequestAdapter(
+    private val onCancel: (RideRequest) -> Unit = {}
+) : ListAdapter<RideRequest, MyRequestAdapter.VH>(DIFF) {
     private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
@@ -67,8 +95,9 @@ class MyRequestAdapter : ListAdapter<RideRequest, MyRequestAdapter.VH>(DIFF) {
             RequestStatus.COMPLETED -> "Trip completed"
             RequestStatus.CANCELLED -> "Request cancelled"
         }
-        h.btnCancel.visibility = View.GONE
-        h.btnRate.visibility = if (r.status == RequestStatus.COMPLETED) View.VISIBLE else View.GONE
+        h.btnCancel.visibility = if (r.status == RequestStatus.OPEN) View.VISIBLE else View.GONE
+        h.btnCancel.setOnClickListener { onCancel(r) }
+        h.btnRate.visibility = if (r.status == RequestStatus.COMPLETED && !r.reviewed) View.VISIBLE else View.GONE
     }
     companion object { private val DIFF = object : DiffUtil.ItemCallback<RideRequest>() { override fun areItemsTheSame(a: RideRequest, b: RideRequest)=a.id==b.id; override fun areContentsTheSame(a: RideRequest, b: RideRequest)=a==b } }
 }

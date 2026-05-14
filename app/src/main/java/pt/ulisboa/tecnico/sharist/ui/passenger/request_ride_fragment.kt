@@ -8,7 +8,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.EditText
+import android.widget.AutoCompleteTextView
+import android.widget.ArrayAdapter
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -18,21 +19,42 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import pt.ulisboa.tecnico.sharist.R
-import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
+import pt.ulisboa.tecnico.sharist.SharISTApp
+import pt.ulisboa.tecnico.sharist.data.model.RequestStatus
+import pt.ulisboa.tecnico.sharist.data.model.RideRequest
+import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 class RequestRideFragment : Fragment() {
     private lateinit var mapView: MapView
+    private lateinit var requestRepo: RideRequestRepository
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_request_ride, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        val etOrigin = view.findViewById<EditText>(R.id.et_origin)
-        val etDestination = view.findViewById<EditText>(R.id.et_destination)
+        val app = requireActivity().application as SharISTApp
+        requestRepo = app.requestRepository
+        val session = app.sessionManager
+        val etOrigin = view.findViewById<AutoCompleteTextView>(R.id.et_origin)
+        val etDestination = view.findViewById<AutoCompleteTextView>(R.id.et_destination)
+        
+        val locations = MapDemoData.allPoints().keys.toList()
+        val adapter = ArrayAdapter<String>(requireContext(), android.R.layout.simple_dropdown_item_1line, locations)
+        etOrigin.setAdapter(adapter)
+        etDestination.setAdapter(adapter)
+
+        // Make dropdowns appear on click
+        etOrigin.setOnClickListener { etOrigin.showDropDown() }
+        etOrigin.setOnTouchListener { _, _ -> etOrigin.showDropDown(); false }
+        etDestination.setOnClickListener { etDestination.showDropDown() }
+        etDestination.setOnTouchListener { _, _ -> etDestination.showDropDown(); false }
         val tvSelectedTime = view.findViewById<TextView>(R.id.tv_selected_time)
         val tvMapStatus = view.findViewById<TextView>(R.id.tv_map_status)
         val selectedTime = Calendar.getInstance()
@@ -120,16 +142,29 @@ class RequestRideFragment : Fragment() {
                 ).show()
                 return@setOnClickListener
             }
-            val created = DemoRequestStore.submitRequest(origin, destination, selectedTime.time)
-            if (!created) {
-                Toast.makeText(
-                    requireContext(),
-                    "You already have an active request/ride. Complete or cancel it first.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return@setOnClickListener
+            val request = RideRequest(
+                passengerId = session.uid ?: "",
+                passengerName = session.displayName ?: "Anonymous",
+                origin = origin,
+                destination = destination,
+                requestedTime = selectedTime.time,
+                status = RequestStatus.OPEN,
+                createdAt = Date()
+            )
+
+            lifecycleScope.launch {
+                val result = requestRepo.createRequest(request)
+                if (result.isSuccess) {
+                    Toast.makeText(requireContext(), "Request created successfully!", Toast.LENGTH_SHORT).show()
+                    requireActivity().onBackPressedDispatcher.onBackPressed()
+                } else {
+                    Toast.makeText(
+                        requireContext(),
+                        "Failed to create request: ${result.exceptionOrNull()?.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
-            Toast.makeText(requireContext(), "Demo request created", Toast.LENGTH_SHORT).show()
         }
     }
 

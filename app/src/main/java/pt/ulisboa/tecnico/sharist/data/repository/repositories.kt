@@ -115,7 +115,11 @@ class RideRequestRepository(
         remote.createRequest(request)
     }
 
-    suspend fun cancelRequest(requestId: String) {
+    suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double): Result<Unit> = runCatching {
+        remote.acceptRequest(requestId, driverId, driverName, driverRating)
+    }
+
+    suspend fun cancelRequest(requestId: String): Result<Unit> = runCatching {
         remote.cancelRequest(requestId)
     }
 

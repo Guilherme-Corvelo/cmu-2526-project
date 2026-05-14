@@ -8,6 +8,23 @@ import java.util.Date
 import java.util.UUID
 
 object DemoRideStore {
+    private val DEMO_CLIENT = User(
+        uid = DemoRequestStore.DEMO_CLIENT_ID,
+        displayName = DemoRequestStore.DEMO_CLIENT_NAME,
+        email = "client@demo.app",
+        isDriver = false,
+        balance = 25.0
+    )
+
+    private val DEMO_DRIVER = User(
+        uid = DemoRequestStore.DEMO_DRIVER_ID,
+        displayName = DemoRequestStore.DEMO_DRIVER_NAME,
+        email = "driver@demo.app",
+        isDriver = true,
+        rating = 4.8,
+        ratingCount = 36
+    )
+
     private val users = linkedMapOf(
         DEMO_CLIENT.uid to DEMO_CLIENT,
         DEMO_DRIVER.uid to DEMO_DRIVER
@@ -127,21 +144,4 @@ object DemoRideStore {
         if (query.isBlank()) return true
         return field.contains(query.trim(), ignoreCase = true)
     }
-
-    private val DEMO_CLIENT = User(
-        uid = DemoRequestStore.DEMO_CLIENT_ID,
-        displayName = DemoRequestStore.DEMO_CLIENT_NAME,
-        email = "client@demo.app",
-        isDriver = false,
-        balance = 25.0
-    )
-
-    private val DEMO_DRIVER = User(
-        uid = DemoRequestStore.DEMO_DRIVER_ID,
-        displayName = DemoRequestStore.DEMO_DRIVER_NAME,
-        email = "driver@demo.app",
-        isDriver = true,
-        rating = 4.8,
-        ratingCount = 36
-    )
 }

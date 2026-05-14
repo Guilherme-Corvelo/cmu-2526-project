@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "784684262992",
+    "project_id": "sharist-99646",
+    "storage_bucket": "sharist-99646.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:784684262992:android:3a2b9463dcee45d4b41355",
+        "android_client_info": {
+          "package_name": "pt.ulisboa.tecnico.sharist"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQd4kREa5Q0VNyMjBZHj7OklpAG8_RXF8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

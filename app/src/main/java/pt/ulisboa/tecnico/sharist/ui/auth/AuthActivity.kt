@@ -23,12 +23,12 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
 
     fun signIn(email: String, password: String) {
         _state.value = State.Loading
+        session.forceDemoMode = false // Ensure we use real Firebase
         viewModelScope.launch {
             runCatching { userRepo.signIn(email, password) }
                 .onSuccess { r ->
                     val uid = r?.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }
                     val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }
-                    session.forceDemoMode = false
                     session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName)
                     _state.value = State.Success
                 }
@@ -38,6 +38,7 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
 
     fun register(email: String, password: String, name: String, isDriver: Boolean) {
         _state.value = State.Loading
+        session.forceDemoMode = false // Ensure we use real Firebase
         viewModelScope.launch {
             runCatching {
                 val r = userRepo.register(email, password)
@@ -46,7 +47,6 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
                 uid
             }
                 .onSuccess { uid ->
-                    session.forceDemoMode = false
                     session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name)
                     _state.value = State.Success
                 }

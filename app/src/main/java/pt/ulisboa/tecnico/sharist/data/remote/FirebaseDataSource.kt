@@ -106,26 +106,51 @@ class FirebaseDataSource(
 
     override fun observeOpenRequests(): Flow<List<RideRequest>> = callbackFlow {
         val listener = requestsCol.whereEqualTo("status", RequestStatus.OPEN.name)
-            .orderBy("requestedTime", Query.Direction.ASCENDING).limit(50)
-            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(RideRequest::class.java) ?: emptyList()) }
+            .limit(100)
+            .addSnapshotListener { snap, err ->
+                if (err != null) close(err)
+                else {
+                    val requests = snap?.toObjects(RideRequest::class.java) ?: emptyList()
+                    trySend(requests.sortedBy { it.requestedTime })
+                }
+            }
         awaitClose { listener.remove() }
     }
 
     override fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>> = callbackFlow {
         val listener = requestsCol.whereEqualTo("passengerId", passengerId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(RideRequest::class.java) ?: emptyList()) }
+            .addSnapshotListener { snap, err ->
+                if (err != null) close(err)
+                else {
+                    val requests = snap?.toObjects(RideRequest::class.java) ?: emptyList()
+                    trySend(requests.sortedByDescending { it.createdAt })
+                }
+            }
         awaitClose { listener.remove() }
     }
 
     override fun observeDriverRequests(driverId: String): Flow<List<RideRequest>> = callbackFlow {
         val listener = requestsCol.whereEqualTo("driverId", driverId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(RideRequest::class.java) ?: emptyList()) }
+            .addSnapshotListener { snap, err ->
+                if (err != null) close(err)
+                else {
+                    val requests = snap?.toObjects(RideRequest::class.java) ?: emptyList()
+                    trySend(requests.sortedByDescending { it.createdAt })
+                }
+            }
         awaitClose { listener.remove() }
     }
 
-    override suspend fun createRequest(request: RideRequest): String { val ref = requestsCol.document(); ref.set(request).await(); return ref.id }
+    override suspend fun createRequest(request: RideRequest): String {
+        val ref = requestsCol.document()
+        // We set the ID explicitly so the object inside the document also has it
+        val toSave = request.copy(
+            id = ref.id,
+            createdAt = null // Let Firestore set this via @ServerTimestamp
+        )
+        ref.set(toSave).await()
+        return ref.id
+    }
     override suspend fun cancelRequest(requestId: String) { requestsCol.document(requestId).update("status", RequestStatus.CANCELLED.name).await() }
     override suspend fun completeRequest(requestId: String) { requestsCol.document(requestId).update("status", RequestStatus.COMPLETED.name).await() }
 

@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.*
+import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -31,8 +32,8 @@ class CreateRideActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_close_white)
 
-        val etOrigin = findViewById<EditText>(R.id.et_origin)
-        val etDest = findViewById<EditText>(R.id.et_destination)
+        val etOrigin = findViewById<AutoCompleteTextView>(R.id.et_origin)
+        val etDest = findViewById<AutoCompleteTextView>(R.id.et_destination)
         val btnPickTime = findViewById<Button>(R.id.btn_pick_time)
         val tvDateTime = findViewById<TextView>(R.id.tv_date_time)
         val etSeats = findViewById<EditText>(R.id.et_seats)
@@ -41,6 +42,18 @@ class CreateRideActivity : AppCompatActivity() {
         val etThreshold = findViewById<EditText>(R.id.et_threshold)
         val btnCreate = findViewById<Button>(R.id.btn_create)
         val progressBar = findViewById<ProgressBar>(R.id.progress_bar)
+
+        // Setup Location Dropdowns
+        val locations = MapDemoData.allPoints().keys.toList()
+        val locationAdapter = ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, locations)
+        etOrigin.setAdapter(locationAdapter)
+        etDest.setAdapter(locationAdapter)
+
+        // Force dropdown on click/touch
+        etOrigin.setOnClickListener { etOrigin.showDropDown() }
+        etOrigin.setOnTouchListener { _, _ -> etOrigin.showDropDown(); false }
+        etDest.setOnClickListener { etDest.showDropDown() }
+        etDest.setOnTouchListener { _, _ -> etDest.showDropDown(); false }
 
         // Setup Weather Spinner
         val weatherOptions = WeatherType.values().map { it.name }

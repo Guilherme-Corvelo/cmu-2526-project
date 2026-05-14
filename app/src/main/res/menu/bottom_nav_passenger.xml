@@ -2,14 +2,18 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/requestRideFragment"
+        android:icon="@drawable/ic_car_placeholder"
         android:title="Request" />
     <item
         android:id="@+id/rideMapFragment"
+        android:icon="@android:drawable/ic_dialog_map"
         android:title="Map" />
     <item
         android:id="@+id/myRequestsFragment"
+        android:icon="@drawable/ic_person_placeholder"
         android:title="My Rides" />
     <item
         android:id="@+id/profileFragment"
+        android:icon="@drawable/ic_person_placeholder"
         android:title="Profile" />
 </menu>

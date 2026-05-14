@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.*
+import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
@@ -58,8 +59,8 @@ class HomeFragment : Fragment() {
     }
 
     private lateinit var adapter: RideAdapter
-    private lateinit var etOrigin: EditText
-    private lateinit var etDest: EditText
+    private lateinit var etOrigin: AutoCompleteTextView
+    private lateinit var etDest: AutoCompleteTextView
     private lateinit var recyclerView: RecyclerView
     private lateinit var tvEmpty: TextView
     private lateinit var progressBar: ProgressBar
@@ -112,7 +113,17 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupSearch() {
-        // Debouncing handled in ViewModel via StateFlow.debounce()
+        val locations = MapDemoData.allPoints().keys.toList()
+        val adapter = ArrayAdapter<String>(requireContext(), android.R.layout.simple_dropdown_item_1line, locations)
+        etOrigin.setAdapter(adapter)
+        etDest.setAdapter(adapter)
+
+        // Make it show dropdown on click
+        etOrigin.setOnClickListener { etOrigin.showDropDown() }
+        etOrigin.setOnTouchListener { _, _ -> etOrigin.showDropDown(); false }
+        etDest.setOnClickListener { etDest.showDropDown() }
+        etDest.setOnTouchListener { _, _ -> etDest.showDropDown(); false }
+
         etOrigin.addTextChangedListener { viewModel.setOrigin(it.toString()) }
         etDest.addTextChangedListener   { viewModel.setDestination(it.toString()) }
     }

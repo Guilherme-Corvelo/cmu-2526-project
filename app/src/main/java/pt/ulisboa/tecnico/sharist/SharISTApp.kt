@@ -1,5 +1,6 @@
 package pt.ulisboa.tecnico.sharist
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.data.local.LocalDataSource
 import pt.ulisboa.tecnico.sharist.data.local.SharISTDatabase
+import pt.ulisboa.tecnico.sharist.data.model.*
 import pt.ulisboa.tecnico.sharist.data.remote.FirebaseDataSource
 import pt.ulisboa.tecnico.sharist.data.remote.MockRemoteDataSource
 import pt.ulisboa.tecnico.sharist.data.remote.RemoteDataSource
@@ -22,6 +24,7 @@ import pt.ulisboa.tecnico.sharist.utils.ConnectionType
 import pt.ulisboa.tecnico.sharist.utils.NetworkMonitor
 import pt.ulisboa.tecnico.sharist.utils.SessionManager
 
+@SuppressLint("DiscouragedApi")
 class SharISTApp : Application() {
 
     val networkMonitor by lazy { NetworkMonitor(this) }
@@ -32,65 +35,96 @@ class SharISTApp : Application() {
     private val localDataSource by lazy { LocalDataSource(db) }
 
     val remoteDataSource: RemoteDataSource by lazy {
-        // Check if google-services.json was applied by looking for the generated resource
-        val hasConfig = try {
-            val resId = resources.getIdentifier("google_app_id", "string", packageName)
-            resId != 0
-        } catch (e: Exception) {
-            false
-        }
-
-        if (sessionManager.forceDemoMode) {
-            Log.w("SharISTApp", "Running in DEMO mode with MockRemoteDataSource.")
-            MockRemoteDataSource()
-        } else if (hasConfig) {
+        val firebaseInstance = lazy {
             try {
-                FirebaseApp.initializeApp(this)
-                FirebaseDataSource(
-                    auth = FirebaseAuth.getInstance(),
-                    db = FirebaseFirestore.getInstance()
-                )
-            } catch (e: Throwable) {
-                Log.e("SharISTApp", "Firebase initialization failed even with config", e)
-                MockRemoteDataSource()
+                val app = if (FirebaseApp.getApps(this).isEmpty()) {
+                    FirebaseApp.initializeApp(this)
+                } else {
+                    FirebaseApp.getInstance()
+                }
+                
+                if (app != null) {
+                    FirebaseDataSource(FirebaseAuth.getInstance(), FirebaseFirestore.getInstance())
+                } else null
+            } catch (e: Exception) {
+                Log.e("SharISTApp", "Firebase init failed: ${e.message}")
+                null
             }
-        } else {
-            Log.w("SharISTApp", "google-services.json not found. Using MockRemoteDataSource.")
-            MockRemoteDataSource()
+        }
+
+        val mockInstance = lazy { MockRemoteDataSource() }
+
+        object : RemoteDataSource {
+            private val delegate: RemoteDataSource
+                get() {
+                    val useFirebase = !sessionManager.forceDemoMode && firebaseInstance.value != null
+                    
+                    if (useFirebase) {
+                        // Once we know Firebase is initialized, we can check for a real user
+                        try {
+                            if (FirebaseAuth.getInstance().currentUser != null && sessionManager.forceDemoMode) {
+                                Log.i("SharISTApp", "Detected real user, disabling forceDemoMode.")
+                                sessionManager.forceDemoMode = false
+                            }
+                        } catch (e: Exception) {
+                            Log.e("SharISTApp", "Error checking current user", e)
+                        }
+                        return firebaseInstance.value!!
+                    } else {
+                        return mockInstance.value
+                    }
+                }
+
+            override val currentUid: String? get() = delegate.currentUid
+            override suspend fun signIn(email: String, pass: String) = delegate.signIn(email, pass)
+            override suspend fun register(email: String, pass: String) = delegate.register(email, pass)
+            override fun signOut() = delegate.signOut()
+            override suspend fun createUserProfile(user: User) = delegate.createUserProfile(user)
+            override suspend fun getUser(uid: String) = delegate.getUser(uid)
+            override suspend fun updateBalance(uid: String, delta: Double) = delegate.updateBalance(uid, delta)
+            override suspend fun submitReview(review: Review) = delegate.submitReview(review)
+            override fun observeRides(filter: RideFilter) = delegate.observeRides(filter)
+            override suspend fun getRide(rideId: String) = delegate.getRide(rideId)
+            override fun observeDriverRides(driverId: String) = delegate.observeDriverRides(driverId)
+            override suspend fun createRide(ride: Ride) = delegate.createRide(ride)
+            override suspend fun decrementSeat(rideId: String) = delegate.decrementSeat(rideId)
+            override suspend fun createBooking(booking: Booking) = delegate.createBooking(booking)
+            override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) = delegate.updateBookingStatus(bookingId, status)
+            override fun observePassengerBookings(passengerId: String) = delegate.observePassengerBookings(passengerId)
+            override fun observeRideBookings(rideId: String) = delegate.observeRideBookings(rideId)
+            override fun observeOpenRequests() = delegate.observeOpenRequests()
+            override fun observePassengerRequests(passengerId: String) = delegate.observePassengerRequests(passengerId)
+            override fun observeDriverRequests(driverId: String) = delegate.observeDriverRequests(driverId)
+            override suspend fun createRequest(request: RideRequest) = delegate.createRequest(request)
+            override suspend fun cancelRequest(requestId: String) = delegate.cancelRequest(requestId)
+            override suspend fun completeRequest(requestId: String) = delegate.completeRequest(requestId)
+            override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) =
+                delegate.acceptRequest(requestId, driverId, driverName, driverRating)
         }
     }
 
-    val rideRepository by lazy {
-        RideRepository(remoteDataSource, localDataSource, networkMonitor)
-    }
-    val requestRepository by lazy {
-        RideRequestRepository(remoteDataSource, localDataSource, networkMonitor)
-    }
-    val userRepository by lazy {
-        UserRepository(remoteDataSource)
-    }
+    val rideRepository by lazy { RideRepository(remoteDataSource, localDataSource, networkMonitor) }
+    val requestRepository by lazy { RideRequestRepository(remoteDataSource, localDataSource, networkMonitor) }
+    val userRepository by lazy { UserRepository(remoteDataSource) }
 
     override fun onCreate() {
         super.onCreate()
+        try {
+            if (FirebaseApp.getApps(this).isEmpty()) {
+                FirebaseApp.initializeApp(this)
+            }
+        } catch (e: Exception) {
+            Log.e("SharISTApp", "Firebase init failed", e)
+        }
 
         val appScope = ProcessLifecycleOwner.get().lifecycleScope
-
         networkMonitor.connectionFlow
             .onEach { connectionType ->
                 try {
-                    when (connectionType) {
-                        ConnectionType.WIFI -> {
-                            appScope.launch { rideRepository.syncPendingOperations() }
-                            appScope.launch { rideRepository.preloadOnWifi() }
-                        }
-                        ConnectionType.METERED -> {
-                            appScope.launch { rideRepository.syncPendingOperations() }
-                        }
-                        else -> {}
+                    if (connectionType == ConnectionType.WIFI || connectionType == ConnectionType.METERED) {
+                        appScope.launch { rideRepository.syncPendingOperations() }
                     }
-                } catch (e: Exception) {
-                    Log.e("SharISTApp", "Error during sync", e)
-                }
+                } catch (e: Exception) { Log.e("SharISTApp", "Sync error", e) }
             }
             .launchIn(appScope)
     }
