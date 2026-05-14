@@ -29,7 +29,7 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
                 .onSuccess { r ->
                     val uid = r?.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }
                     val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }
-                    session.save(uid, if (user.isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName)
+                    session.save(uid, if (user.driver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName)
                     _state.value = State.Success
                 }
                 .onFailure { _state.value = State.Error(it.message ?: "Login failed") }
@@ -43,7 +43,7 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
             runCatching {
                 val r = userRepo.register(email, password)
                 val uid = r?.user?.uid ?: error("No UID")
-                userRepo.createProfile(User(uid = uid, displayName = name, email = email, isDriver = isDriver))
+                userRepo.createProfile(User(uid = uid, displayName = name, email = email, driver = isDriver))
                 uid
             }
                 .onSuccess { uid ->
@@ -79,6 +79,7 @@ class AuthActivity : AppCompatActivity() {
         val etPassword = findViewById<EditText>(R.id.et_password)
         val etName = findViewById<EditText>(R.id.et_name)
         val tilName = findViewById<View>(R.id.til_name)
+        val layoutRegisterOnly = findViewById<View>(R.id.layout_register_only)
         val driverToggle = findViewById<View>(R.id.layout_driver_toggle)
         val switchDriver = findViewById<CompoundButton>(R.id.switch_driver)
         val tvError = findViewById<TextView>(R.id.tv_error)
@@ -96,8 +97,7 @@ class AuthActivity : AppCompatActivity() {
 
         fun switchMode(login: Boolean) {
             isLoginMode = login
-            tilName.visibility = if (login) View.GONE else View.VISIBLE
-            driverToggle.visibility = if (login) View.GONE else View.VISIBLE
+            layoutRegisterOnly.visibility = if (login) View.GONE else View.VISIBLE
             btnSubmit.text = if (login) "Sign In" else "Create Account"
             tabLogin.alpha = if (login) 1f else 0.4f
             tabRegister.alpha = if (!login) 1f else 0.4f

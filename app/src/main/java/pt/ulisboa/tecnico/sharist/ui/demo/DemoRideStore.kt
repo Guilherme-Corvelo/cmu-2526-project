@@ -12,7 +12,7 @@ object DemoRideStore {
         uid = DemoRequestStore.DEMO_CLIENT_ID,
         displayName = DemoRequestStore.DEMO_CLIENT_NAME,
         email = "client@demo.app",
-        isDriver = false,
+        driver = false,
         balance = 25.0
     )
 
@@ -20,7 +20,7 @@ object DemoRideStore {
         uid = DemoRequestStore.DEMO_DRIVER_ID,
         displayName = DemoRequestStore.DEMO_DRIVER_NAME,
         email = "driver@demo.app",
-        isDriver = true,
+        driver = true,
         rating = 4.8,
         ratingCount = 36
     )

@@ -28,6 +28,16 @@
         android:label="My Rides"/>
 
     <fragment
+        android:id="@+id/requestRideFragment"
+        android:name="pt.ulisboa.tecnico.sharist.ui.passenger.RequestRideFragment"
+        android:label="Request a Ride" />
+
+    <fragment
+        android:id="@+id/myRequestsFragment"
+        android:name="pt.ulisboa.tecnico.sharist.ui.passenger.MyRequestsFragment"
+        android:label="My Requests" />
+
+    <fragment
         android:id="@+id/profileFragment"
         android:name="pt.ulisboa.tecnico.sharist.ui.profile.ProfileFragment"
         android:label="Profile"/>

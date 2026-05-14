@@ -18,6 +18,7 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import androidx.navigation.fragment.findNavController
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.RequestStatus
@@ -152,11 +153,12 @@ class RequestRideFragment : Fragment() {
                 createdAt = Date()
             )
 
-            lifecycleScope.launch {
+            viewLifecycleOwner.lifecycleScope.launch {
                 val result = requestRepo.createRequest(request)
                 if (result.isSuccess) {
                     Toast.makeText(requireContext(), "Request created successfully!", Toast.LENGTH_SHORT).show()
-                    requireActivity().onBackPressedDispatcher.onBackPressed()
+                    // Navigate to My Requests list instead of just finishing the activity
+                    findNavController().navigate(R.id.action_request_to_my_requests)
                 } else {
                     Toast.makeText(
                         requireContext(),

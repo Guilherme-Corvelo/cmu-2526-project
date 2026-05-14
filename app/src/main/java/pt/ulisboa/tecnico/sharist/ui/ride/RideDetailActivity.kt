@@ -49,7 +49,7 @@ class RideDetailViewModel(
     fun loadRide(rideId: String) {
         viewModelScope.launch {
             userRepo.currentUid?.let { uid ->
-                _isCurrentUserDriver.value = userRepo.getUser(uid)?.isDriver == true
+                _isCurrentUserDriver.value = userRepo.getUser(uid)?.driver == true
             }
             val ride = rideRepo.getRide(rideId) ?: return@launch
             _ride.value = ride

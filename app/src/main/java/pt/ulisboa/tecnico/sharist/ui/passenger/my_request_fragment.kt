@@ -85,8 +85,8 @@ class MyRequestAdapter(
     override fun onCreateViewHolder(p: ViewGroup, v: Int) = VH(LayoutInflater.from(p.context).inflate(R.layout.item_my_request, p, false))
     override fun onBindViewHolder(h: VH, pos: Int) {
         val r = getItem(pos)
-        h.tvRoute.text = "${r.origin} → ${r.destination}"
-        h.tvTime.text = r.requestedTime?.let { dateFmt.format(it) } ?: "—"
+        h.tvRoute.text = "${r.origin ?: "Unknown"} → ${r.destination ?: "Unknown"}"
+        h.tvTime.text = r.requestedTime?.let { dateFmt.format(it) } ?: "Pending time..."
         h.tvPrice.text = "€ %.2f".format(r.estimatedPrice)
         h.tvDriver.text = r.driverName?.let { "Driver: $it" } ?: "Looking for nearby driver"
         h.tvStatus.text = when (r.status) {
@@ -94,6 +94,7 @@ class MyRequestAdapter(
             RequestStatus.ACCEPTED -> "Driver on the way"
             RequestStatus.COMPLETED -> "Trip completed"
             RequestStatus.CANCELLED -> "Request cancelled"
+            else -> "Unknown status"
         }
         h.btnCancel.visibility = if (r.status == RequestStatus.OPEN) View.VISIBLE else View.GONE
         h.btnCancel.setOnClickListener { onCancel(r) }

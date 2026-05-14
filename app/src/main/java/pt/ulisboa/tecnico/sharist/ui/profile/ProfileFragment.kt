@@ -41,9 +41,9 @@ class ProfileFragment : Fragment() {
         val uid = userRepo.currentUid
         if (session.forceDemoMode) {
             val demoUser = if (session.role == SessionManager.ROLE_DRIVER) {
-                User(DemoRequestStore.DEMO_DRIVER_ID, DemoRequestStore.DEMO_DRIVER_NAME, "demo_driver@demo.app", isDriver = true, rating = 4.8, ratingCount = 36)
+                User(DemoRequestStore.DEMO_DRIVER_ID, DemoRequestStore.DEMO_DRIVER_NAME, "demo_driver@demo.app", driver = true, rating = 4.8, ratingCount = 36)
             } else {
-                User(DemoRequestStore.DEMO_CLIENT_ID, DemoRequestStore.DEMO_CLIENT_NAME, "demo_client@demo.app", isDriver = false, rating = 4.9, ratingCount = 12)
+                User(DemoRequestStore.DEMO_CLIENT_ID, DemoRequestStore.DEMO_CLIENT_NAME, "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
             }
             bindProfile(demoUser, tvName, tvEmail, tvRole, tvRatingSummary, tvHistogram, tvVehicles, tvComments)
         } else if (uid != null) {
@@ -77,10 +77,10 @@ class ProfileFragment : Fragment() {
     ) {
         tvName.text = user.displayName
         tvEmail.text = user.email
-        tvRole.text = "Role: ${if (user.isDriver) "Driver" else "Passenger"}"
+        tvRole.text = "Role: ${if (user.driver) "Driver" else "Passenger"}"
         tvRatingSummary.text = "Rating: %.1f (%d ratings)".format(user.rating, user.ratingCount)
         tvHistogram.text = buildHistogram(user.rating, user.ratingCount)
-        tvVehicles.text = if (user.isDriver) "• Toyota Prius\n• Renault Clio" else "No registered vehicles"
+        tvVehicles.text = if (user.driver) "• Toyota Prius\n• Renault Clio" else "No registered vehicles"
         tvComments.text = "• Great communicator\n• Punctual and safe\n• Friendly and respectful"
     }
 

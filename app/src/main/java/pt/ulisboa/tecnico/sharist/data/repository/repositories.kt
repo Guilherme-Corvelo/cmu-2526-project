@@ -111,6 +111,9 @@ class RideRequestRepository(
     fun getPassengerRequests(passengerId: String): Flow<List<RideRequest>> =
         remote.observePassengerRequests(passengerId)
 
+    fun getDriverRequests(driverId: String): Flow<List<RideRequest>> =
+        remote.observeDriverRequests(driverId)
+
     suspend fun createRequest(request: RideRequest): Result<String> = runCatching {
         remote.createRequest(request)
     }

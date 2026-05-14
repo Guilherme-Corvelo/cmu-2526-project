@@ -6,10 +6,13 @@
 
     <fragment
         android:id="@+id/requestRideFragment"
-        android:name="pt.ulisboa.tecnico.sharist.ui.passenger.RequestRideFragment">
+        android:name="pt.ulisboa.tecnico.sharist.ui.passenger.RequestRideFragment"
+        android:label="Request a Ride">
         <action
             android:id="@+id/action_request_to_my_requests"
-            app:destination="@id/myRequestsFragment" />
+            app:destination="@id/myRequestsFragment"
+            app:popUpTo="@id/requestRideFragment"
+            app:popUpToInclusive="true" />
     </fragment>
 
     <fragment

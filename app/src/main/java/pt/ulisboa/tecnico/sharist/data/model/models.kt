@@ -3,6 +3,7 @@ package pt.ulisboa.tecnico.sharist.data.model
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 import java.util.Date
 
@@ -14,7 +15,7 @@ data class User(
     val balance: Double = 0.0,
     val rating: Double = 5.0,
     val ratingCount: Int = 0,
-    val isDriver: Boolean = false
+    val driver: Boolean = false
 )
 
 data class RideRequest(
