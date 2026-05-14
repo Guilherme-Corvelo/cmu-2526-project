@@ -12,6 +12,7 @@ interface RemoteDataSource {
     suspend fun getUser(uid: String): User?
     suspend fun updateBalance(uid: String, delta: Double)
     suspend fun submitReview(review: Review)
+    fun observeReviewsForUser(userId: String): Flow<List<Review>>
     
     // Rides
     fun observeRides(filter: RideFilter): Flow<List<Ride>>

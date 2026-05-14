@@ -81,6 +81,7 @@ class SharISTApp : Application() {
             override suspend fun getUser(uid: String) = delegate.getUser(uid)
             override suspend fun updateBalance(uid: String, delta: Double) = delegate.updateBalance(uid, delta)
             override suspend fun submitReview(review: Review) = delegate.submitReview(review)
+            override fun observeReviewsForUser(userId: String) = delegate.observeReviewsForUser(userId)
             override fun observeRides(filter: RideFilter) = delegate.observeRides(filter)
             override suspend fun getRide(rideId: String) = delegate.getRide(rideId)
             override fun observeDriverRides(driverId: String) = delegate.observeDriverRides(driverId)

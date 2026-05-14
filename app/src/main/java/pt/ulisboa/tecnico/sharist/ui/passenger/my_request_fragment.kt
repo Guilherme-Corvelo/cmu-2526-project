@@ -48,6 +48,27 @@ class MyRequestsFragment : Fragment() {
                         Toast.makeText(requireContext(), "Error cancelling: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
+            },
+            onRate = { req ->
+                val dialog = RateDriverDialog(req.driverName ?: "Driver") { stars, comment ->
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        try {
+                            val review = pt.ulisboa.tecnico.sharist.data.model.Review(
+                                requestId = req.id,
+                                driverId = req.driverId ?: "",
+                                passengerId = session.uid ?: "",
+                                rating = stars,
+                                comment = comment
+                            )
+                            requestRepo.submitReview(review)
+                            Toast.makeText(requireContext(), "Review submitted!", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            Log.e("MyRequests", "Error submitting review", e)
+                            Toast.makeText(requireContext(), "Failed to submit review: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                dialog.show(childFragmentManager, "rate_driver")
             }
         )
         recycler.layoutManager = LinearLayoutManager(requireContext())
@@ -70,7 +91,8 @@ class MyRequestsFragment : Fragment() {
 }
 
 class MyRequestAdapter(
-    private val onCancel: (RideRequest) -> Unit = {}
+    private val onCancel: (RideRequest) -> Unit = {},
+    private val onRate: (RideRequest) -> Unit = {}
 ) : ListAdapter<RideRequest, MyRequestAdapter.VH>(DIFF) {
     private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -100,6 +122,7 @@ class MyRequestAdapter(
         h.btnCancel.visibility = if (r.status == RequestStatus.OPEN) View.VISIBLE else View.GONE
         h.btnCancel.setOnClickListener { onCancel(r) }
         h.btnRate.visibility = if (r.status == RequestStatus.COMPLETED && !r.reviewed) View.VISIBLE else View.GONE
+        h.btnRate.setOnClickListener { onRate(r) }
     }
     companion object { private val DIFF = object : DiffUtil.ItemCallback<RideRequest>() { override fun areItemsTheSame(a: RideRequest, b: RideRequest)=a.id==b.id; override fun areContentsTheSame(a: RideRequest, b: RideRequest)=a==b } }
 }

@@ -40,6 +40,9 @@ class MockRemoteDataSource : RemoteDataSource {
         DemoRideStore.addReview(review)
     }
 
+    override fun observeReviewsForUser(userId: String): Flow<List<Review>> =
+        DemoRideStore.observeReviewsForUser(userId)
+
     override fun observeRides(filter: RideFilter): Flow<List<Ride>> = DemoRideStore.observeRides(filter)
 
     override suspend fun getRide(rideId: String): Ride? = DemoRideStore.getRide(rideId)

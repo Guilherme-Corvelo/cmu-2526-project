@@ -83,8 +83,19 @@ object DemoRideStore {
 
     fun addReview(review: Review) {
         val id = review.id.ifBlank { "mock_review_${UUID.randomUUID()}" }
-        reviewsFlow.value = (reviewsFlow.value + review.copy(id = id)).toMutableList()
+        val finalReview = review.copy(id = id, createdAt = Date())
+        reviewsFlow.value = (reviewsFlow.value + finalReview).toMutableList()
+        
+        // Update user rating
+        users[review.driverId]?.let { user ->
+            val newCount = user.ratingCount + 1
+            val newRating = ((user.rating * user.ratingCount) + review.rating) / newCount
+            users[review.driverId] = user.copy(rating = newRating, ratingCount = newCount)
+        }
     }
+
+    fun observeReviewsForUser(userId: String): Flow<List<Review>> =
+        reviewsFlow.map { reviews -> reviews.filter { it.driverId == userId }.sortedByDescending { it.createdAt?.time ?: 0L } }
 
     fun observeRides(filter: RideFilter): Flow<List<Ride>> {
         return ridesFlow.map { rides ->

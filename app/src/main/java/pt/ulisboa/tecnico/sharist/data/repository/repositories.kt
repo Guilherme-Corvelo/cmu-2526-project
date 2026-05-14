@@ -133,6 +133,8 @@ class RideRequestRepository(
     suspend fun submitReview(review: Review) {
         remote.submitReview(review)
     }
+
+    fun getReviewsForUser(userId: String): Flow<List<Review>> = remote.observeReviewsForUser(userId)
 }
 
 class UserRepository(private val remote: RemoteDataSource) {

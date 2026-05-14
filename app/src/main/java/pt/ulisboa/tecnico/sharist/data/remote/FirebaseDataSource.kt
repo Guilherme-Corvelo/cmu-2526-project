@@ -167,7 +167,30 @@ class FirebaseDataSource(
     }
 
     override suspend fun submitReview(review: Review) {
-        val ref = reviewsCol.document(); ref.set(review).await()
-        requestsCol.document(review.requestId).update("reviewed", true).await()
+        db.runTransaction { tx ->
+            val reviewRef = reviewsCol.document()
+            val requestRef = requestsCol.document(review.requestId)
+
+            // We no longer update the driver's user document directly because passengers 
+            // don't have permission to write to other users' profiles (Security Rules).
+            // The rating will be calculated client-side in the ProfileFragment.
+
+            tx.set(reviewRef, review.copy(id = reviewRef.id))
+            tx.update(requestRef, "reviewed", true)
+        }.await()
+    }
+
+    override fun observeReviewsForUser(userId: String): Flow<List<Review>> = callbackFlow {
+        val listener = reviewsCol.whereEqualTo("driverId", userId)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    close(err)
+                } else {
+                    val reviews = snap?.toObjects(Review::class.java)?.filterNotNull() ?: emptyList()
+                    // Sort client-side to avoid needing a composite index
+                    trySend(reviews.sortedByDescending { it.createdAt?.time ?: 0L })
+                }
+            }
+        awaitClose { listener.remove() }
     }
 }

@@ -7,9 +7,11 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
+import pt.ulisboa.tecnico.sharist.data.model.Review
 import pt.ulisboa.tecnico.sharist.data.model.User
 import pt.ulisboa.tecnico.sharist.ui.auth.AuthActivity
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
@@ -19,6 +21,10 @@ class ProfileFragment : Fragment() {
 
     private val userRepo by lazy {
         (requireActivity().application as SharISTApp).userRepository
+    }
+
+    private val requestRepo by lazy {
+        (requireActivity().application as SharISTApp).requestRepository
     }
 
     override fun onCreateView(
@@ -45,12 +51,14 @@ class ProfileFragment : Fragment() {
             } else {
                 User(DemoRequestStore.DEMO_CLIENT_ID, DemoRequestStore.DEMO_CLIENT_NAME, "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
             }
-            bindProfile(demoUser, tvName, tvEmail, tvRole, tvRatingSummary, tvHistogram, tvVehicles, tvComments)
+            bindProfile(demoUser, tvName, tvEmail, tvRole, tvRatingSummary, tvHistogram, tvVehicles)
+            observeReviews(demoUser.uid, tvComments, tvRatingSummary, tvHistogram)
         } else if (uid != null) {
             viewLifecycleOwner.lifecycleScope.launch {
                 val user = userRepo.getUser(uid)
                 if (user != null) {
-                    bindProfile(user, tvName, tvEmail, tvRole, tvRatingSummary, tvHistogram, tvVehicles, tvComments)
+                    bindProfile(user, tvName, tvEmail, tvRole, tvRatingSummary, tvHistogram, tvVehicles)
+                    observeReviews(user.uid, tvComments, tvRatingSummary, tvHistogram)
                 } else {
                     tvName.text = getString(R.string.unknown_email)
                     tvEmail.text = getString(R.string.unknown_email)
@@ -72,26 +80,51 @@ class ProfileFragment : Fragment() {
         tvRole: TextView,
         tvRatingSummary: TextView,
         tvHistogram: TextView,
-        tvVehicles: TextView,
-        tvComments: TextView
+        tvVehicles: TextView
     ) {
         tvName.text = user.displayName
         tvEmail.text = user.email
         tvRole.text = "Role: ${if (user.driver) "Driver" else "Passenger"}"
-        tvRatingSummary.text = "Rating: %.1f (%d ratings)".format(user.rating, user.ratingCount)
-        tvHistogram.text = buildHistogram(user.rating, user.ratingCount)
+        // These will be updated by observeReviews
+        tvRatingSummary.text = "Loading rating..."
+        tvHistogram.text = ""
         tvVehicles.text = if (user.driver) "• Toyota Prius\n• Renault Clio" else "No registered vehicles"
-        tvComments.text = "• Great communicator\n• Punctual and safe\n• Friendly and respectful"
     }
 
-    private fun buildHistogram(avg: Double, count: Int): String {
-        if (count == 0) return "No ratings yet"
-        val five = (count * (avg / 5.0)).toInt().coerceIn(0, count)
-        val remaining = count - five
-        val four = (remaining * 0.55).toInt()
-        val three = (remaining * 0.25).toInt()
-        val two = (remaining * 0.15).toInt()
-        val one = (remaining - four - three - two).coerceAtLeast(0)
-        return "5★: $five\n4★: $four\n3★: $three\n2★: $two\n1★: $one"
+    private fun observeReviews(uid: String, tvComments: TextView, tvRatingSummary: TextView, tvHistogram: TextView) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            requestRepo.getReviewsForUser(uid)
+                .catch { e ->
+                    tvComments.text = "Error loading reviews: ${e.message}"
+                }
+                .collect { reviews ->
+                    if (reviews.isEmpty()) {
+                        tvComments.text = "No reviews yet."
+                        tvRatingSummary.text = "Rating: N/A (0 ratings)"
+                        tvHistogram.text = "No ratings yet"
+                    } else {
+                        // Calculate stats from actual review objects
+                        val count = reviews.size
+                        val avg = reviews.map { it.rating }.average()
+                        tvRatingSummary.text = "Rating: %.1f (%d ratings)".format(avg, count)
+                        tvHistogram.text = buildHistogramFromReviews(reviews)
+
+                        tvComments.text = reviews.joinToString("\n") {
+                            val stars = "★".repeat(it.rating) + "☆".repeat(5 - it.rating)
+                            "• $stars${if (it.comment.isNotBlank()) ": ${it.comment}" else ""}"
+                        }
+                    }
+                }
+        }
+    }
+
+    private fun buildHistogramFromReviews(reviews: List<Review>): String {
+        val counts = reviews.groupBy { it.rating }.mapValues { it.value.size }
+        val f5 = counts[5] ?: 0
+        val f4 = counts[4] ?: 0
+        val f3 = counts[3] ?: 0
+        val f2 = counts[2] ?: 0
+        val f1 = counts[1] ?: 0
+        return "5★: $f5\n4★: $f4\n3★: $f3\n2★: $f2\n1★: $f1"
     }
 }

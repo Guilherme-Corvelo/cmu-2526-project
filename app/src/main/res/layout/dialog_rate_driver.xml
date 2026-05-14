@@ -1,2 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp"><TextView android:id="@+id/tv_title" android:layout_width="match_parent" android:layout_height="wrap_content"/><LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"><Button android:id="@+id/btn_star1" android:layout_width="48dp" android:layout_height="48dp" android:text="★"/><Button android:id="@+id/btn_star2" android:layout_width="48dp" android:layout_height="48dp" android:text="★"/><Button android:id="@+id/btn_star3" android:layout_width="48dp" android:layout_height="48dp" android:text="★"/><Button android:id="@+id/btn_star4" android:layout_width="48dp" android:layout_height="48dp" android:text="★"/><Button android:id="@+id/btn_star5" android:layout_width="48dp" android:layout_height="48dp" android:text="★"/></LinearLayout><EditText android:id="@+id/et_comment" android:layout_width="match_parent" android:layout_height="wrap_content"/><Button android:id="@+id/btn_submit_review" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Submit"/></LinearLayout>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Rate your ride"
+        android:textAlignment="center"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_star1"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="★"
+            android:textSize="24sp"
+            android:textColor="@color/purple_500" />
+
+        <Button
+            android:id="@+id/btn_star2"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="★"
+            android:textSize="24sp"
+            android:textColor="@color/purple_500" />
+
+        <Button
+            android:id="@+id/btn_star3"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="★"
+            android:textSize="24sp"
+            android:textColor="@color/purple_500" />
+
+        <Button
+            android:id="@+id/btn_star4"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="★"
+            android:textSize="24sp"
+            android:textColor="@color/purple_500" />
+
+        <Button
+            android:id="@+id/btn_star5"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="★"
+            android:textSize="24sp"
+            android:textColor="@color/purple_500" />
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/et_comment"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@android:drawable/editbox_background_normal"
+        android:gravity="top|start"
+        android:hint="Leave a comment (optional)"
+        android:minHeight="80dp"
+        android:padding="8dp" />
+
+    <Button
+        android:id="@+id/btn_submit_review"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Submit Review"
+        android:textAllCaps="false" />
+
+</LinearLayout>

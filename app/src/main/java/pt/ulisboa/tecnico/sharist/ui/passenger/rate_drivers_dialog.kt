@@ -21,14 +21,32 @@ class RateDriverDialog(
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val tvTitle = view.findViewById<TextView>(R.id.tv_title)
         val starBtns = listOf(
-            view.findViewById<Button>(R.id.btn_star1), view.findViewById(R.id.btn_star2), view.findViewById(R.id.btn_star3), view.findViewById(R.id.btn_star4), view.findViewById(R.id.btn_star5)
+            view.findViewById<Button>(R.id.btn_star1), view.findViewById(R.id.btn_star2),
+            view.findViewById<Button>(R.id.btn_star3), view.findViewById(R.id.btn_star4),
+            view.findViewById<Button>(R.id.btn_star5)
         )
         val etComment = view.findViewById<EditText>(R.id.et_comment)
         val btnSubmit = view.findViewById<Button>(R.id.btn_submit_review)
+        
         tvTitle.text = "Rate your ride with $driverName"
-        fun highlight(n: Int) { selectedStars = n; starBtns.forEachIndexed { idx, b -> b.text = if (idx < n) "★" else "☆"; b.alpha = if (idx < n) 1f else 0.4f } }
+        
+        fun highlight(n: Int) {
+            selectedStars = n
+            starBtns.forEachIndexed { idx, b ->
+                b.text = if (idx < n) "★" else "☆"
+            }
+        }
+        
         highlight(5)
-        starBtns.forEachIndexed { idx, b -> b.setOnClickListener { highlight(idx + 1) } }
-        btnSubmit.setOnClickListener { onSubmit(selectedStars, etComment.text.toString().trim()); dismiss() }
+        starBtns.forEachIndexed { idx, b ->
+            b.setOnClickListener { highlight(idx + 1) }
+        }
+        
+        btnSubmit.setOnClickListener {
+            val comment = etComment.text.toString().trim()
+            btnSubmit.isEnabled = false // Prevent double-click
+            onSubmit(selectedStars, comment)
+            dismiss()
+        }
     }
 }
