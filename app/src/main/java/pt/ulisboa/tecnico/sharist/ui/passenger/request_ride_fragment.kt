@@ -31,7 +31,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-
+import pt.ulisboa.tecnico.sharist.utils.PriceCalculator
 class RequestRideFragment : Fragment() {
     private lateinit var mapView: MapView
     private lateinit var requestRepo: RideRequestRepository
@@ -143,12 +143,16 @@ class RequestRideFragment : Fragment() {
                 ).show()
                 return@setOnClickListener
             }
+
+            val estimatedPrice = PriceCalculator.estimate(origin, destination)
+
             val request = RideRequest(
                 passengerId = session.uid ?: "",
                 passengerName = session.displayName ?: "Anonymous",
                 origin = origin,
                 destination = destination,
                 requestedTime = selectedTime.time,
+                estimatedPrice = estimatedPrice,
                 status = RequestStatus.OPEN,
                 createdAt = Date()
             )
