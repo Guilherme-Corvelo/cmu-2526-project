@@ -13,6 +13,7 @@ import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.Review
 import pt.ulisboa.tecnico.sharist.data.model.User
+import pt.ulisboa.tecnico.sharist.data.model.VehicleType
 import pt.ulisboa.tecnico.sharist.ui.auth.AuthActivity
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
 import pt.ulisboa.tecnico.sharist.utils.SessionManager
@@ -47,7 +48,7 @@ class ProfileFragment : Fragment() {
         val uid = userRepo.currentUid
         if (session.forceDemoMode) {
             val demoUser = if (session.role == SessionManager.ROLE_DRIVER) {
-                User(DemoRequestStore.DEMO_DRIVER_ID, DemoRequestStore.DEMO_DRIVER_NAME, "demo_driver@demo.app", driver = true, rating = 4.8, ratingCount = 36)
+                User(DemoRequestStore.DEMO_DRIVER_ID, DemoRequestStore.DEMO_DRIVER_NAME, "demo_driver@demo.app", driver = true, rating = 4.8, ratingCount = 36, vehicleType = VehicleType.SEDAN, vehiclePlate = "DEMO-01")
             } else {
                 User(DemoRequestStore.DEMO_CLIENT_ID, DemoRequestStore.DEMO_CLIENT_NAME, "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
             }
@@ -88,7 +89,12 @@ class ProfileFragment : Fragment() {
         // These will be updated by observeReviews
         tvRatingSummary.text = "Loading rating..."
         tvHistogram.text = ""
-        tvVehicles.text = if (user.driver) "• Toyota Prius\n• Renault Clio" else "No registered vehicles"
+        tvVehicles.text = if (user.driver) {
+            val typeText = user.vehicleType.displayName
+            val seatsText = user.vehicleType.maxSeats
+            val plateText = if (user.vehiclePlate.isBlank()) "N/A" else user.vehiclePlate
+            "• $typeText ($seatsText seats)\n• Plate: $plateText"
+        } else "No registered vehicles"
     }
 
     private fun observeReviews(uid: String, tvComments: TextView, tvRatingSummary: TextView, tvHistogram: TextView) {

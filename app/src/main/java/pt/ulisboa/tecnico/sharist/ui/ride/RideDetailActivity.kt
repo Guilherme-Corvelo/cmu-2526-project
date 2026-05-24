@@ -85,7 +85,7 @@ class RideDetailViewModel(
             val booking = Booking(
                 rideId           = rideId,
                 passengerId      = uid,
-                passengerName    = "Me", // fetch from user profile in full impl
+                passengerName    = userRepo.getUser(uid)?.displayName ?: "Passenger",
                 seatsRequested   = seats,
                 totalPrice       = ride.pricePerSeat * seats
             )
@@ -144,8 +144,10 @@ class RideDetailActivity : AppCompatActivity() {
     private lateinit var layoutRequestActions: LinearLayout
     private lateinit var btnAcceptRequest: Button
     private lateinit var btnRejectRequest: Button
+    private lateinit var btnViewPassengerProfile: Button
     private lateinit var btnBook: Button
     private lateinit var progressBar: ProgressBar
+    private var selectedPendingBooking: Booking? = null
 
     private val dateFmt = SimpleDateFormat("EEE, dd MMM yyyy  HH:mm", Locale.getDefault())
 
@@ -173,6 +175,7 @@ class RideDetailActivity : AppCompatActivity() {
         layoutRequestActions = findViewById(R.id.layout_request_actions)
         btnAcceptRequest = findViewById(R.id.btn_accept_request)
         btnRejectRequest = findViewById(R.id.btn_reject_request)
+        btnViewPassengerProfile = findViewById(R.id.btn_view_passenger_profile)
         btnBook          = findViewById(R.id.btn_book)
         progressBar      = findViewById(R.id.progress_bar)
     }
@@ -199,11 +202,18 @@ class RideDetailActivity : AppCompatActivity() {
                         if (!viewModel.isCurrentUserDriver.value || requests.isEmpty()) {
                             tvRequests.visibility = View.GONE
                             layoutRequestActions.visibility = View.GONE
+                            btnViewPassengerProfile.visibility = View.GONE
+                            selectedPendingBooking = null
                         } else {
                             val first = requests.first()
+                            selectedPendingBooking = first
                             tvRequests.visibility = View.VISIBLE
                             layoutRequestActions.visibility = View.VISIBLE
-                            tvRequests.text = "Pending request: ${first.passengerName} (${first.seatsRequested} seat)"
+                            btnViewPassengerProfile.visibility = View.VISIBLE
+                            val count = requests.size
+                            val seatsLabel = if (first.seatsRequested == 1) "seat" else "seats"
+                            val suffix = if (count > 1) " (+${count - 1} more)" else ""
+                            tvRequests.text = "Pending request: ${first.passengerName} (${first.seatsRequested} $seatsLabel)$suffix"
                             btnAcceptRequest.setOnClickListener { viewModel.respondToBooking(first.id, true) }
                             btnRejectRequest.setOnClickListener { viewModel.respondToBooking(first.id, false) }
                         }
@@ -246,6 +256,13 @@ class RideDetailActivity : AppCompatActivity() {
                 }
             }
         }
+
+        btnViewPassengerProfile.setOnClickListener {
+            val booking = selectedPendingBooking ?: return@setOnClickListener
+            lifecycleScope.launch {
+                showPassengerProfileDialog(booking.passengerId, booking.passengerName)
+            }
+        }
     }
 
     private fun populateUI(ride: Ride, rideId: String) {
@@ -272,4 +289,31 @@ class RideDetailActivity : AppCompatActivity() {
     }
 
     override fun onSupportNavigateUp(): Boolean { finish(); return true }
+
+    private suspend fun showPassengerProfileDialog(passengerId: String, fallbackName: String) {
+        val app = application as SharISTApp
+        val user = app.userRepository.getUser(passengerId)
+        val reviews = app.requestRepository.getReviewsForUser(passengerId).first()
+        val avgRating = if (reviews.isEmpty()) null else reviews.map { it.rating }.average()
+        val recentComments = reviews
+            .mapNotNull { it.comment.takeIf { c -> c.isNotBlank() } }
+            .take(3)
+            .ifEmpty { listOf("No written comments yet.") }
+
+        val profileText = buildString {
+            appendLine("Name: ${user?.displayName ?: fallbackName}")
+            appendLine("Email: ${user?.email ?: "N/A"}")
+            appendLine("Role: ${if (user?.driver == true) "Driver" else "Passenger"}")
+            appendLine("Ratings: ${avgRating?.let { "%.1f".format(it) } ?: "N/A"} (${reviews.size} reviews)")
+            appendLine()
+            appendLine("Recent comments:")
+            recentComments.forEach { appendLine("• $it") }
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Passenger profile")
+            .setMessage(profileText)
+            .setPositiveButton("Close", null)
+            .show()
+    }
 }

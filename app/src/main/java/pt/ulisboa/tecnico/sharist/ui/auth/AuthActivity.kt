@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.User
+import pt.ulisboa.tecnico.sharist.data.model.VehicleType
 import pt.ulisboa.tecnico.sharist.data.repository.UserRepository
 import pt.ulisboa.tecnico.sharist.ui.MainActivity
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
@@ -36,14 +37,30 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
         }
     }
 
-    fun register(email: String, password: String, name: String, isDriver: Boolean) {
+    fun register(
+        email: String,
+        password: String,
+        name: String,
+        isDriver: Boolean,
+        vehicleType: VehicleType,
+        vehiclePlate: String
+    ) {
         _state.value = State.Loading
         session.forceDemoMode = false // Ensure we use real Firebase
         viewModelScope.launch {
             runCatching {
                 val r = userRepo.register(email, password)
                 val uid = r?.user?.uid ?: error("No UID")
-                userRepo.createProfile(User(uid = uid, displayName = name, email = email, driver = isDriver))
+                userRepo.createProfile(
+                    User(
+                        uid = uid,
+                        displayName = name,
+                        email = email,
+                        driver = isDriver,
+                        vehicleType = if (isDriver) vehicleType else VehicleType.NONE,
+                        vehiclePlate = if (isDriver) vehiclePlate else ""
+                    )
+                )
                 uid
             }
                 .onSuccess { uid ->
@@ -82,6 +99,9 @@ class AuthActivity : AppCompatActivity() {
         val layoutRegisterOnly = findViewById<View>(R.id.layout_register_only)
         val driverToggle = findViewById<View>(R.id.layout_driver_toggle)
         val switchDriver = findViewById<CompoundButton>(R.id.switch_driver)
+        val spinnerVehicleType = findViewById<Spinner>(R.id.spinner_vehicle_type)
+        val etVehiclePlate = findViewById<EditText>(R.id.et_vehicle_plate)
+        val layoutDriverDetails = findViewById<View>(R.id.layout_driver_details)
         val tvError = findViewById<TextView>(R.id.tv_error)
         val progressBar = findViewById<ProgressBar>(R.id.progress_bar)
         val btnSubmit = findViewById<Button>(R.id.btn_submit)
@@ -112,15 +132,29 @@ class AuthActivity : AppCompatActivity() {
         tabLogin.setOnClickListener { switchMode(true) }
         tabRegister.setOnClickListener { switchMode(false) }
 
+        val vehicleOptions = VehicleType.values().filter { it != VehicleType.NONE }
+        spinnerVehicleType.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            vehicleOptions.map { "${it.displayName} (${it.maxSeats} seats)" }
+        )
+
+        switchDriver.setOnCheckedChangeListener { _, isChecked ->
+            layoutDriverDetails.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
         btnSubmit.setOnClickListener {
             if (isLoginMode) {
                 vm.signIn(etEmail.text.toString().trim(), etPassword.text.toString())
             } else {
+                val selectedVehicle = vehicleOptions.getOrElse(spinnerVehicleType.selectedItemPosition) { VehicleType.SEDAN }
                 vm.register(
                     etEmail.text.toString().trim(),
                     etPassword.text.toString(),
                     etName.text.toString().trim(),
-                    switchDriver.isChecked
+                    switchDriver.isChecked,
+                    selectedVehicle,
+                    etVehiclePlate.text.toString().trim()
                 )
             }
         }

@@ -144,6 +144,16 @@
         </LinearLayout>
 
         <Button
+            android:id="@+id/btn_view_passenger_profile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="12dp"
+            android:text="View passenger profile"
+            style="@style/Widget.Material3.Button.OutlinedButton"/>
+
+        <Button
             android:id="@+id/btn_book"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

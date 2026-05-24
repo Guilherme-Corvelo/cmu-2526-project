@@ -89,7 +89,30 @@ class FirebaseDataSource(
     }
 
     override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) {
-        bookingsCol.document(bookingId).update("status", status.name).await()
+        db.runTransaction { tx ->
+            val bookingRef = bookingsCol.document(bookingId)
+            val booking = tx.get(bookingRef).toObject(Booking::class.java)
+                ?: error("Booking not found")
+
+            if (booking.status != BookingStatus.PENDING) return@runTransaction
+
+            if (status == BookingStatus.ACCEPTED) {
+                val rideRef = ridesCol.document(booking.rideId)
+                val ride = tx.get(rideRef).toObject(Ride::class.java)
+                    ?: error("Ride not found")
+
+                if (ride.seatsAvailable < booking.seatsRequested) {
+                    tx.update(bookingRef, "status", BookingStatus.REJECTED.name)
+                    return@runTransaction
+                }
+
+                val newSeats = ride.seatsAvailable - booking.seatsRequested
+                tx.update(rideRef, "seatsAvailable", newSeats)
+                tx.update(rideRef, "status", if (newSeats == 0) RideStatus.FULL.name else RideStatus.OPEN.name)
+            }
+
+            tx.update(bookingRef, "status", status.name)
+        }.await()
     }
 
     override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> = callbackFlow {
