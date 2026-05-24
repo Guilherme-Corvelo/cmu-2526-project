@@ -38,6 +38,8 @@ class CreateRideActivity : AppCompatActivity() {
         val tvDateTime = findViewById<TextView>(R.id.tv_date_time)
         val etSeats = findViewById<EditText>(R.id.et_seats)
         val etPrice = findViewById<EditText>(R.id.et_price)
+        val switchPeriodic = findViewById<CompoundButton>(R.id.switch_periodic)
+        val spinnerPeriodicity = findViewById<Spinner>(R.id.spinner_periodicity)
         val spinnerWeather = findViewById<Spinner>(R.id.spinner_weather)
         val etThreshold = findViewById<EditText>(R.id.et_threshold)
         val btnCreate = findViewById<Button>(R.id.btn_create)
@@ -54,6 +56,13 @@ class CreateRideActivity : AppCompatActivity() {
         etOrigin.setOnTouchListener { _, _ -> etOrigin.showDropDown(); false }
         etDest.setOnClickListener { etDest.showDropDown() }
         etDest.setOnTouchListener { _, _ -> etDest.showDropDown(); false }
+
+        // Setup Weather Spinner
+        val periodicLabels = listOf("Every weekday", "Every day", "Weekly")
+        spinnerPeriodicity.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, periodicLabels)
+        switchPeriodic.setOnCheckedChangeListener { _, isChecked ->
+            spinnerPeriodicity.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
 
         // Setup Weather Spinner
         val weatherOptions = WeatherType.values().map { it.name }
@@ -99,6 +108,17 @@ class CreateRideActivity : AppCompatActivity() {
 
             lifecycleScope.launch {
                 val user = userRepo.getUser(uid)
+                val maxSeats = if (user?.driver == true && user.vehicleType.maxSeats > 0) user.vehicleType.maxSeats else seats
+                if (seats > maxSeats) {
+                    progressBar.visibility = View.GONE
+                    btnCreate.isEnabled = true
+                    Toast.makeText(
+                        this@CreateRideActivity,
+                        "Your vehicle only supports up to $maxSeats shared seats.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
                 val ride = Ride(
                     driverId = uid,
                     driverName = user?.displayName ?: "Unknown",
@@ -109,6 +129,8 @@ class CreateRideActivity : AppCompatActivity() {
                     departureTime = selectedCalendar.time,
                     seatsTotal = seats,
                     seatsAvailable = seats,
+                    periodic = switchPeriodic.isChecked,
+                    periodicLabel = if (switchPeriodic.isChecked) periodicLabels[spinnerPeriodicity.selectedItemPosition] else "",
                     pricePerSeat = price,
                     weatherCondition = WeatherCondition(
                         type = WeatherType.values()[spinnerWeather.selectedItemPosition],

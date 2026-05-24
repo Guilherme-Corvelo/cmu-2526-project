@@ -15,8 +15,19 @@ data class User(
     val balance: Double = 0.0,
     val rating: Double = 5.0,
     val ratingCount: Int = 0,
-    val driver: Boolean = false
+    val driver: Boolean = false,
+    val vehicleType: VehicleType = VehicleType.NONE,
+    val vehiclePlate: String = "",
+    val preferredPassengerRating: Double = 0.0
 )
+
+enum class VehicleType(val displayName: String, val maxSeats: Int) {
+    NONE("No vehicle", 0),
+    CITY_COMPACT("City Compact", 3),
+    SEDAN("Sedan", 4),
+    SUV("SUV", 6),
+    VAN("Van", 8);
+}
 
 data class RideRequest(
     @DocumentId val id: String = "",
@@ -58,6 +69,8 @@ data class Ride(
     val departureTime: Date? = null,
     val seatsTotal: Int = 1,
     val seatsAvailable: Int = 1,
+    val periodic: Boolean = false,
+    val periodicLabel: String = "",
     val pricePerSeat: Double = 0.0,
     val status: RideStatus = RideStatus.OPEN,
     val weatherCondition: WeatherCondition = WeatherCondition(),
