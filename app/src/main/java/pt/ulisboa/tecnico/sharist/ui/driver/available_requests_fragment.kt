@@ -28,10 +28,12 @@ import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 
 import android.util.Log
 import kotlinx.coroutines.flow.catch
+import pt.ulisboa.tecnico.sharist.data.repository.UserRepository
 
 class AvailableRequestsFragment : Fragment() {
     private lateinit var mapView: MapView
     private lateinit var requestRepo: RideRequestRepository
+    private lateinit var userRepo: UserRepository
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_available_requests, container, false)
@@ -39,6 +41,7 @@ class AvailableRequestsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val app = requireActivity().application as SharISTApp
         requestRepo = app.requestRepository
+        userRepo = app.userRepository
         val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
@@ -53,11 +56,12 @@ class AvailableRequestsFragment : Fragment() {
             onAccept = { req ->
                 renderPreviewRoute(req)
                 viewLifecycleOwner.lifecycleScope.launch {
+                    val driverRating = userRepo.getUser(session.uid ?: "")?.rating ?: 5.0
                     val res = requestRepo.acceptRequest(
                         req.id,
                         session.uid ?: "",
                         session.displayName ?: "Driver",
-                        5.0
+                        driverRating
                     )
                     if (res.isFailure) {
                         Toast.makeText(requireContext(), "Failed to accept: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
