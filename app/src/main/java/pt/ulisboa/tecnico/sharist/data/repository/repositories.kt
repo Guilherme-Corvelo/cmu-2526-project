@@ -58,10 +58,18 @@ class RideRepository(
             val id = local.pendingDao.insert(PendingOperation(type = "CREATE_RIDE", payload = gson.toJson(ride)))
             return Result.success("pending_$id")
         }
-        return runCatching { remote.createRide(ride) }
+        return runCatching {
+            val id = remote.createRide(ride)
+            local.rideDao.upsertOne(ride.copy(id = id).toEntity())
+            id
+        }
     }
 
-    suspend fun getRide(rideId: String): Ride? = remote.getRide(rideId)
+    suspend fun getRide(rideId: String): Ride? {
+        val remoteRide = runCatching { remote.getRide(rideId) }.getOrNull()
+        if (remoteRide != null) return remoteRide
+        return local.rideDao.getById(rideId)?.toDomain()
+    }
 
     fun getRideBookings(rideId: String): Flow<List<Booking>> = remote.observeRideBookings(rideId)
 

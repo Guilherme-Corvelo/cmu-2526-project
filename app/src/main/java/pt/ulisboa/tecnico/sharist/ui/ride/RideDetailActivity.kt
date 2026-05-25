@@ -36,6 +36,8 @@ class RideDetailViewModel(
     val bookingState: StateFlow<BookingState> = _bookingState.asStateFlow()
     private val _pendingBookings = MutableStateFlow<List<Booking>>(emptyList())
     val pendingBookings: StateFlow<List<Booking>> = _pendingBookings.asStateFlow()
+    private val _joinedBookings = MutableStateFlow<List<Booking>>(emptyList())
+    val joinedBookings: StateFlow<List<Booking>> = _joinedBookings.asStateFlow()
     private val _isCurrentUserDriver = MutableStateFlow(false)
     val isCurrentUserDriver: StateFlow<Boolean> = _isCurrentUserDriver.asStateFlow()
 
@@ -56,8 +58,12 @@ class RideDetailViewModel(
             val uid = userRepo.currentUid
             if (uid != null && ride.driverId == uid) {
                 rideRepo.getRideBookings(ride.id)
-                    .map { bookings -> bookings.filter { it.status == BookingStatus.PENDING } }
-                    .collect { _pendingBookings.value = it }
+                    .collect { bookings ->
+                        _pendingBookings.value = bookings.filter { it.status == BookingStatus.PENDING }
+                        _joinedBookings.value = bookings.filter {
+                            it.status == BookingStatus.ACCEPTED || it.status == BookingStatus.CONFIRMED
+                        }
+                    }
             }
             checkWeather(ride)
         }
@@ -219,6 +225,18 @@ class RideDetailActivity : AppCompatActivity() {
                         }
                     }
                 }
+                launch {
+                    viewModel.joinedBookings.collect { joined ->
+                        if (viewModel.isCurrentUserDriver.value && joined.isNotEmpty()) {
+                            val first = joined.first()
+                            val more = if (joined.size > 1) " (+${joined.size - 1} more)" else ""
+                            btnViewPassengerProfile.visibility = View.VISIBLE
+                            btnViewPassengerProfile.text = "View joined: ${first.passengerName}$more"
+                        } else if (viewModel.isCurrentUserDriver.value) {
+                            btnViewPassengerProfile.text = "View passenger profile"
+                        }
+                    }
+                }
 
                 launch {
                     viewModel.weatherWarning.collect { warning ->
@@ -258,7 +276,11 @@ class RideDetailActivity : AppCompatActivity() {
         }
 
         btnViewPassengerProfile.setOnClickListener {
-            val booking = selectedPendingBooking ?: return@setOnClickListener
+            val booking = selectedPendingBooking ?: viewModel.joinedBookings.value.firstOrNull()
+            if (booking == null) {
+                Toast.makeText(this, "No passengers have joined yet.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
             lifecycleScope.launch {
                 showPassengerProfileDialog(booking.passengerId, booking.passengerName)
             }
