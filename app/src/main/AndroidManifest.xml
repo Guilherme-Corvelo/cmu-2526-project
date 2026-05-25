@@ -29,6 +29,9 @@
             android:exported="false"/>
         <activity android:name=".ui.ride.RideDetailActivity"
             android:exported="false"/>
+        <activity android:name=".ui.driver.DriverPostedRidesActivity"
+            android:exported="false" />
+
         <activity android:name=".ui.rides.CreateRideActivity"
             android:label="Post a Ride"
             android:exported="false"/>
