@@ -10,6 +10,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content" />
 
+    <Button
+        android:id="@+id/btn_create_ride"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Create shared ride"/>
+
     <TextView
         android:id="@+id/tv_driver_map_hint"
         android:layout_width="match_parent"
