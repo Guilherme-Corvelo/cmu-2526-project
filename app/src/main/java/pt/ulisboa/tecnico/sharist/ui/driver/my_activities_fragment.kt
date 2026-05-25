@@ -1,6 +1,7 @@
 package pt.ulisboa.tecnico.sharist.ui.driver
 
 import android.os.Bundle
+import android.content.Intent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +25,7 @@ import pt.ulisboa.tecnico.sharist.data.model.RideRequest
 import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 import pt.ulisboa.tecnico.sharist.ui.passenger.RateDriverDialog
+import pt.ulisboa.tecnico.sharist.ui.rides.CreateRideActivity
 
 class MyActiveRidesFragment : Fragment() {
     private lateinit var requestRepo: RideRequestRepository
@@ -39,6 +41,9 @@ class MyActiveRidesFragment : Fragment() {
         val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_rides)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
+        view.findViewById<android.widget.Button>(R.id.btn_create_ride).setOnClickListener {
+            startActivity(Intent(requireContext(), CreateRideActivity::class.java))
+        }
 
         Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
         mapView = view.findViewById(R.id.driver_route_map)
@@ -78,7 +83,7 @@ class MyActiveRidesFragment : Fragment() {
                 .collect {
                     adapter.submitList(it)
                     renderAcceptedRoute(it.firstOrNull())
-                    tvEmpty.text = "No active ride. You can accept one from Available Requests."
+                    tvEmpty.text = "No active trip. Create a shared ride above or accept bookings from your rides."
                     tvEmpty.visibility = if (it.isEmpty()) View.VISIBLE else View.GONE
                 }
         }
