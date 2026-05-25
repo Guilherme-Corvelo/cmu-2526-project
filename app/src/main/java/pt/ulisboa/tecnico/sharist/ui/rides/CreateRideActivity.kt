@@ -58,7 +58,7 @@ class CreateRideActivity : AppCompatActivity() {
         etDest.setOnTouchListener { _, _ -> etDest.showDropDown(); false }
 
         // Setup Weather Spinner
-        val periodicLabels = listOf("Every weekday", "Every day", "Weekly")
+        val periodicLabels = listOf("Daily", "Weekdays", "Weekly", "Biweekly", "Monthly")
         spinnerPeriodicity.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, periodicLabels)
         switchPeriodic.setOnCheckedChangeListener { _, isChecked ->
             spinnerPeriodicity.visibility = if (isChecked) View.VISIBLE else View.GONE

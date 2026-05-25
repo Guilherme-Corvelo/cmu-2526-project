@@ -5,7 +5,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -20,19 +19,22 @@ import org.osmdroid.views.overlay.Polyline
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.RequestStatus
+import pt.ulisboa.tecnico.sharist.data.model.Review
 import pt.ulisboa.tecnico.sharist.data.model.RideRequest
 import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
+import pt.ulisboa.tecnico.sharist.ui.passenger.RateDriverDialog
 
 class MyActiveRidesFragment : Fragment() {
     private lateinit var requestRepo: RideRequestRepository
     private lateinit var mapView: MapView
+    private lateinit var app: SharISTApp
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_my_active_rides, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        val app = requireActivity().application as SharISTApp
+        app = requireActivity().application as SharISTApp
         requestRepo = app.requestRepository
         val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_rides)
@@ -50,6 +52,20 @@ class MyActiveRidesFragment : Fragment() {
                 viewLifecycleOwner.lifecycleScope.launch {
                     requestRepo.updateRequestStatus(req.id, newStatus)
                 }
+            },
+            onRideCompleted = { req ->
+                RateDriverDialog(req.passengerName) { stars, comment ->
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val review = Review(
+                            requestId = req.id,
+                            driverId = req.passengerId, // review target (passenger)
+                            passengerId = session.uid ?: "",
+                            rating = stars,
+                            comment = comment
+                        )
+                        requestRepo.submitReview(review)
+                    }
+                }.show(parentFragmentManager, "rate_passenger")
             }
         )
         recycler.layoutManager = LinearLayoutManager(requireContext())
@@ -110,7 +126,8 @@ class MyActiveRidesFragment : Fragment() {
 }
 
 class ActiveRideAdapter(
-    private val onUpdateStatus: (RideRequest, RequestStatus) -> Unit
+    private val onUpdateStatus: (RideRequest, RequestStatus) -> Unit,
+    private val onRideCompleted: (RideRequest) -> Unit
 ) : androidx.recyclerview.widget.ListAdapter<RideRequest, ActiveRideAdapter.VH>(DIFF) {
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
@@ -126,7 +143,7 @@ class ActiveRideAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val ride = getItem(position)
         holder.tvRoute.text = "${ride.passengerName}: ${ride.origin} → ${ride.destination}"
-        
+
         val (statusText, btnText, nextStatus) = when (ride.status) {
             RequestStatus.ACCEPTED -> Triple("Accepted - Get moving!", "Start Trip", RequestStatus.EN_ROUTE)
             RequestStatus.EN_ROUTE -> Triple("En route to pickup", "Confirm Pickup", RequestStatus.PICKED_UP)
@@ -137,7 +154,10 @@ class ActiveRideAdapter(
         holder.tvDriver.text = statusText
         holder.btnCancel.visibility = View.VISIBLE
         holder.btnCancel.text = btnText
-        holder.btnCancel.setOnClickListener { onUpdateStatus(ride, nextStatus) }
+        holder.btnCancel.setOnClickListener {
+            onUpdateStatus(ride, nextStatus)
+            if (nextStatus == RequestStatus.COMPLETED) onRideCompleted(ride)
+        }
         holder.btnRate.visibility = View.GONE
     }
 
