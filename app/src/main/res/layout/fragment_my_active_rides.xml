@@ -17,6 +17,14 @@
         android:layout_marginTop="8dp"
         android:text="Create shared ride"/>
 
+    <Button
+        android:id="@+id/btn_view_posted_rides"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="View my posted rides"/>
+
+
     <TextView
         android:id="@+id/tv_driver_map_hint"
         android:layout_width="match_parent"

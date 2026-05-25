@@ -37,7 +37,7 @@ class CreateRideActivity : AppCompatActivity() {
         val btnPickTime = findViewById<Button>(R.id.btn_pick_time)
         val tvDateTime = findViewById<TextView>(R.id.tv_date_time)
         val etSeats = findViewById<EditText>(R.id.et_seats)
-        val etPrice = findViewById<EditText>(R.id.et_price)
+        val tvAutoPrice = findViewById<TextView>(R.id.tv_auto_price)
         val switchPeriodic = findViewById<CompoundButton>(R.id.switch_periodic)
         val spinnerPeriodicity = findViewById<Spinner>(R.id.spinner_periodicity)
         val spinnerWeather = findViewById<Spinner>(R.id.spinner_weather)
@@ -95,7 +95,6 @@ class CreateRideActivity : AppCompatActivity() {
             val origin = etOrigin.text.toString()
             val dest = etDest.text.toString()
             val seats = etSeats.text.toString().toIntOrNull() ?: 0
-            val price = etPrice.text.toString().toDoubleOrNull() ?: 0.0
             val uid = userRepo.currentUid
 
             if (origin.isBlank() || dest.isBlank() || seats <= 0 || uid == null) {
@@ -119,6 +118,9 @@ class CreateRideActivity : AppCompatActivity() {
                     ).show()
                     return@launch
                 }
+                val computedPricePerSeat = ((maxSeats * 2.0) / seats).coerceAtLeast(0.5)
+                tvAutoPrice.text = "Auto price per seat: €%.2f".format(computedPricePerSeat)
+
                 val ride = Ride(
                     driverId = uid,
                     driverName = user?.displayName ?: "Unknown",
@@ -131,7 +133,7 @@ class CreateRideActivity : AppCompatActivity() {
                     seatsAvailable = seats,
                     periodic = switchPeriodic.isChecked,
                     periodicLabel = if (switchPeriodic.isChecked) periodicLabels[spinnerPeriodicity.selectedItemPosition] else "",
-                    pricePerSeat = price,
+                    pricePerSeat = computedPricePerSeat,
                     weatherCondition = WeatherCondition(
                         type = WeatherType.values()[spinnerWeather.selectedItemPosition],
                         threshold = etThreshold.text.toString().toDoubleOrNull()

@@ -26,6 +26,7 @@ import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 import pt.ulisboa.tecnico.sharist.ui.passenger.RateDriverDialog
 import pt.ulisboa.tecnico.sharist.ui.rides.CreateRideActivity
+import pt.ulisboa.tecnico.sharist.ui.driver.DriverPostedRidesActivity
 
 class MyActiveRidesFragment : Fragment() {
     private lateinit var requestRepo: RideRequestRepository
@@ -43,6 +44,9 @@ class MyActiveRidesFragment : Fragment() {
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
         view.findViewById<android.widget.Button>(R.id.btn_create_ride).setOnClickListener {
             startActivity(Intent(requireContext(), CreateRideActivity::class.java))
+        }
+        view.findViewById<android.widget.Button>(R.id.btn_view_posted_rides).setOnClickListener {
+            startActivity(Intent(requireContext(), DriverPostedRidesActivity::class.java))
         }
 
         Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
