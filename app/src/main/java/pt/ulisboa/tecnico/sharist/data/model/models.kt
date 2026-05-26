@@ -41,7 +41,8 @@ data class RideRequest(
     val driverName: String? = null,
     val driverRating: Double = 5.0,
     val status: RequestStatus = RequestStatus.OPEN,
-    val reviewed: Boolean = false,
+    val passengerReviewed: Boolean = false,
+    val driverReviewed: Boolean = false,
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -99,13 +100,22 @@ data class Booking(
     val rideId: String = "",
     val passengerId: String = "",
     val passengerName: String = "",
+    val passengerRating: Double = 5.0,
+    val passengerPhotoUrl: String? = null,
     val seatsRequested: Int = 1,
     val totalPrice: Double = 0.0,
     val status: BookingStatus = BookingStatus.PENDING,
-    @ServerTimestamp val createdAt: Date? = null
+    @ServerTimestamp val createdAt: Date? = null,
+    val origin: String = "",
+    val destination: String = "",
+    val departureTime: Date? = null,
+    val driverName: String = "",
+    val driverId: String = "",
+    val passengerReviewed: Boolean = false,
+    val driverReviewed: Boolean = false
 )
 
-enum class BookingStatus { PENDING, ACCEPTED, CONFIRMED, CANCELLED, REJECTED }
+enum class BookingStatus { PENDING, ACCEPTED, EN_ROUTE, PICKED_UP, COMPLETED, CANCELLED, REJECTED }
 
 @Entity(tableName = "rides_cache")
 data class RideEntity(
@@ -159,14 +169,15 @@ data class RideRequestEntity(
     val driverName: String?,
     val driverRating: Double,
     val status: String,
-    val reviewed: Boolean,
+    val passengerReviewed: Boolean,
+    val driverReviewed: Boolean,
     val cachedAtMs: Long = System.currentTimeMillis()
 )
 
 fun RideRequest.toEntity() = RideRequestEntity(
     id, passengerId, passengerName, origin, destination,
     requestedTime?.time ?: 0L, estimatedPrice,
-    driverId, driverName, driverRating, status.name, reviewed
+    driverId, driverName, driverRating, status.name, passengerReviewed, driverReviewed
 )
 
 fun RideRequestEntity.toDomain() = RideRequest(
@@ -181,7 +192,8 @@ fun RideRequestEntity.toDomain() = RideRequest(
     driverName = driverName,
     driverRating = driverRating,
     status = RequestStatus.valueOf(status),
-    reviewed = reviewed
+    passengerReviewed = passengerReviewed,
+    driverReviewed = driverReviewed
 )
 
 @Entity(tableName = "pending_operations")

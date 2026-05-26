@@ -45,20 +45,37 @@
             android:textStyle="bold"
             android:layout_marginTop="6dp"/>
 
-        <Button
-            android:id="@+id/btn_cancel"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Cancel"
-            android:visibility="gone"
-            android:layout_marginTop="8dp"/>
+            android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/btn_rate"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Rate Driver"
-            android:visibility="gone"
-            android:layout_marginTop="8dp"/>
+            <Button
+                android:id="@+id/btn_action"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Action"
+                android:visibility="gone"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/btn_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cancel"
+                android:visibility="gone"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+
+            <Button
+                android:id="@+id/btn_rate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Rate"
+                android:visibility="gone"
+                android:layout_marginTop="8dp"/>
+        </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

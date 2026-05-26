@@ -68,7 +68,16 @@ class AvailableRequestsFragment : Fragment() {
                     }
                 }
             },
-            onDeny = { /* Just ignore for now */ },
+            onDeny = { req ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val res = requestRepo.updateRequestStatus(req.id, pt.ulisboa.tecnico.sharist.data.model.RequestStatus.CANCELLED)
+                    if (res.isFailure) {
+                        Toast.makeText(requireContext(), "Failed to deny: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Request denied", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
             onPreview = { renderPreviewRoute(it) }
         )
         recycler.layoutManager = LinearLayoutManager(requireContext())

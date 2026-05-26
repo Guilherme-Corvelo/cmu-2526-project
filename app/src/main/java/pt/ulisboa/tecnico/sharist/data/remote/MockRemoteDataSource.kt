@@ -51,6 +51,14 @@ class MockRemoteDataSource : RemoteDataSource {
 
     override suspend fun createRide(ride: Ride): String = DemoRideStore.createRide(ride)
 
+    override suspend fun cancelRide(rideId: String) {
+        DemoRideStore.cancelRide(rideId)
+    }
+
+    override suspend fun completeRide(rideId: String) {
+        DemoRideStore.completeRide(rideId)
+    }
+
     override suspend fun decrementSeat(rideId: String) {
         DemoRideStore.decrementSeat(rideId)
     }
@@ -66,6 +74,9 @@ class MockRemoteDataSource : RemoteDataSource {
 
     override fun observeRideBookings(rideId: String): Flow<List<Booking>> =
         DemoRideStore.observeRideBookings(rideId)
+
+    override fun observeDriverBookings(driverId: String): Flow<List<Booking>> =
+        DemoRideStore.observeDriverBookings(driverId)
 
     // Ride Requests
     override fun observeOpenRequests(): Flow<List<RideRequest>> =
@@ -110,5 +121,9 @@ class MockRemoteDataSource : RemoteDataSource {
                 driverRating = driverRating
             ) else it
         }
+    }
+
+    override fun clearListeners() {
+        // No-op for mock
     }
 }

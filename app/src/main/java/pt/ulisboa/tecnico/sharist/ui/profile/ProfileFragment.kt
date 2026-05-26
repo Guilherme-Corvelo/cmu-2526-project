@@ -38,6 +38,7 @@ class ProfileFragment : Fragment() {
         val tvName = view.findViewById<TextView>(R.id.tv_name)
         val tvEmail = view.findViewById<TextView>(R.id.tv_email)
         val tvRole = view.findViewById<TextView>(R.id.tv_role)
+        val tvBalance = view.findViewById<TextView>(R.id.tv_balance)
         val tvRatingSummary = view.findViewById<TextView>(R.id.tv_rating_summary)
         val tvHistogram = view.findViewById<TextView>(R.id.tv_histogram)
         val tvVehicles = view.findViewById<TextView>(R.id.tv_vehicles)
@@ -52,13 +53,13 @@ class ProfileFragment : Fragment() {
             } else {
                 User(DemoRequestStore.DEMO_CLIENT_ID, DemoRequestStore.DEMO_CLIENT_NAME, "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
             }
-            bindProfile(demoUser, tvName, tvEmail, tvRole, tvRatingSummary, tvHistogram, tvVehicles)
+            bindProfile(demoUser, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
             observeReviews(demoUser.uid, tvComments, tvRatingSummary, tvHistogram)
         } else if (uid != null) {
             viewLifecycleOwner.lifecycleScope.launch {
                 val user = userRepo.getUser(uid)
                 if (user != null) {
-                    bindProfile(user, tvName, tvEmail, tvRole, tvRatingSummary, tvHistogram, tvVehicles)
+                    bindProfile(user, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
                     observeReviews(user.uid, tvComments, tvRatingSummary, tvHistogram)
                 } else {
                     tvName.text = getString(R.string.unknown_email)
@@ -68,8 +69,12 @@ class ProfileFragment : Fragment() {
         }
 
         btnLogout.setOnClickListener {
+            (requireActivity().application as SharISTApp).remoteDataSource.clearListeners()
             userRepo.signOut()
-            startActivity(Intent(requireContext(), AuthActivity::class.java))
+            session.clear()
+            val intent = Intent(requireContext(), AuthActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
             requireActivity().finish()
         }
     }
@@ -79,6 +84,7 @@ class ProfileFragment : Fragment() {
         tvName: TextView,
         tvEmail: TextView,
         tvRole: TextView,
+        tvBalance: TextView,
         tvRatingSummary: TextView,
         tvHistogram: TextView,
         tvVehicles: TextView
@@ -86,6 +92,7 @@ class ProfileFragment : Fragment() {
         tvName.text = user.displayName
         tvEmail.text = user.email
         tvRole.text = "Role: ${if (user.driver) "Driver" else "Passenger"}"
+        tvBalance.text = "Balance: €%.2f".format(user.balance)
         // These will be updated by observeReviews
         tvRatingSummary.text = "Loading rating..."
         tvHistogram.text = ""

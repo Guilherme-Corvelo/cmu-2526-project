@@ -2,7 +2,19 @@
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/nav_graph_passenger"
-    app:startDestination="@id/requestRideFragment">
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="pt.ulisboa.tecnico.sharist.ui.home.HomeFragment"
+        android:label="Find Ride">
+        <action
+            android:id="@+id/action_home_to_ride_detail"
+            app:destination="@id/rideDetailActivity"/>
+        <action
+            android:id="@+id/action_home_to_ride_map"
+            app:destination="@id/rideMapFragment"/>
+    </fragment>
 
     <fragment
         android:id="@+id/requestRideFragment"
@@ -26,4 +38,13 @@
     <fragment
         android:id="@+id/profileFragment"
         android:name="pt.ulisboa.tecnico.sharist.ui.profile.ProfileFragment" />
+
+    <activity
+        android:id="@+id/rideDetailActivity"
+        android:name="pt.ulisboa.tecnico.sharist.ui.ride.RideDetailActivity"
+        android:label="Ride Detail">
+        <argument
+            android:name="rideId"
+            app:argType="string"/>
+    </activity>
 </navigation>

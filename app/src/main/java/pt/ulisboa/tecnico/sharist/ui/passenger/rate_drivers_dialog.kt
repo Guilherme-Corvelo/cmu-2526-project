@@ -11,7 +11,8 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import pt.ulisboa.tecnico.sharist.R
 
 class RateDriverDialog(
-    private val driverName: String,
+    private val targetName: String,
+    private val titleOverride: String? = null,
     private val onSubmit: (stars: Int, comment: String) -> Unit
 ) : BottomSheetDialogFragment() {
     private var selectedStars = 5
@@ -28,7 +29,7 @@ class RateDriverDialog(
         val etComment = view.findViewById<EditText>(R.id.et_comment)
         val btnSubmit = view.findViewById<Button>(R.id.btn_submit_review)
         
-        tvTitle.text = "Rate your ride with $driverName"
+        tvTitle.text = titleOverride ?: "Rate your ride with $targetName"
         
         fun highlight(n: Int) {
             selectedStars = n

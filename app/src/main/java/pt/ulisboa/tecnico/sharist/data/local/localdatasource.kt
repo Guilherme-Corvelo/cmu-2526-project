@@ -39,6 +39,12 @@ interface RideDao {
     @Query("SELECT * FROM rides_cache WHERE id = :id")
     suspend fun getById(id: String): RideEntity?
 
+    @Query("SELECT * FROM rides_cache WHERE status = 'OPEN' " +
+           "AND (:origin = '' OR origin LIKE '%' || :origin || '%') " +
+           "AND (:dest = '' OR destination LIKE '%' || :dest || '%') " +
+           "ORDER BY departureTimeMs ASC")
+    fun observeFilteredRides(origin: String, dest: String): Flow<List<RideEntity>>
+
     @Upsert suspend fun upsert(rides: List<RideEntity>)
     @Upsert suspend fun upsertOne(ride: RideEntity)
 
@@ -56,7 +62,7 @@ interface PendingOperationDao {
     suspend fun clearSynced()
 }
 
-@Database(entities = [RideRequestEntity::class, RideEntity::class, PendingOperation::class], version = 2, exportSchema = false)
+@Database(entities = [RideRequestEntity::class, RideEntity::class, PendingOperation::class], version = 5, exportSchema = false)
 abstract class SharISTDatabase : RoomDatabase() {
     abstract fun requestDao(): RideRequestDao
     abstract fun rideDao(): RideDao

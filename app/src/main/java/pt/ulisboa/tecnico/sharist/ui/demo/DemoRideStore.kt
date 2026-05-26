@@ -92,6 +92,21 @@ object DemoRideStore {
             val newRating = ((user.rating * user.ratingCount) + review.rating) / newCount
             users[review.driverId] = user.copy(rating = newRating, ratingCount = newCount)
         }
+
+        // Update the reviewed status on the request or booking
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
+            if (it.id == review.requestId) {
+                if (it.driverId == review.passengerId) it.copy(driverReviewed = true)
+                else it.copy(passengerReviewed = true)
+            } else it
+        }
+
+        bookingsFlow.value = bookingsFlow.value.map {
+            if (it.id == review.requestId) {
+                if (it.driverId == review.passengerId) it.copy(driverReviewed = true)
+                else it.copy(passengerReviewed = true)
+            } else it
+        }.toMutableList()
     }
 
     fun observeReviewsForUser(userId: String): Flow<List<Review>> =
@@ -133,6 +148,18 @@ object DemoRideStore {
         }.toMutableList()
     }
 
+    fun cancelRide(rideId: String) {
+        ridesFlow.value = ridesFlow.value.map { ride ->
+            if (ride.id == rideId) ride.copy(status = RideStatus.CANCELLED) else ride
+        }.toMutableList()
+    }
+
+    fun completeRide(rideId: String) {
+        ridesFlow.value = ridesFlow.value.map { ride ->
+            if (ride.id == rideId) ride.copy(status = RideStatus.COMPLETED) else ride
+        }.toMutableList()
+    }
+
     fun createBooking(booking: Booking): String {
         val id = booking.id.ifBlank { "mock_booking_${UUID.randomUUID()}" }
         bookingsFlow.value = (bookingsFlow.value + booking.copy(id = id)).toMutableList()
@@ -150,6 +177,9 @@ object DemoRideStore {
 
     fun observeRideBookings(rideId: String): Flow<List<Booking>> =
         bookingsFlow.map { bookings -> bookings.filter { it.rideId == rideId } }
+
+    fun observeDriverBookings(driverId: String): Flow<List<Booking>> =
+        bookingsFlow.map { bookings -> bookings.filter { it.driverId == driverId } }
 
     private fun matchesText(field: String, query: String): Boolean {
         if (query.isBlank()) return true

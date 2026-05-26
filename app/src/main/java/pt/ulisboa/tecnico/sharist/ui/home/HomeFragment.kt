@@ -24,15 +24,31 @@ class HomeViewModel(
     private val rideRepo: pt.ulisboa.tecnico.sharist.data.repository.RideRepository
 ) : ViewModel() {
 
+    private val _userBookings = MutableStateFlow<List<Booking>>(emptyList())
+
     // Mutable filter state exposed as StateFlow
     private val _filter = MutableStateFlow(RideFilter())
     val filter: StateFlow<RideFilter> = _filter.asStateFlow()
 
     // Debounced ride list: re-queries Room whenever filter changes
-    val rides: StateFlow<List<Ride>> = _filter
+    val rides: StateFlow<List<Ride>> = combine(_filter, _userBookings) { filter, bookings ->
+        Pair(filter, bookings.map { it.rideId }.toSet())
+    }
         .debounce(300)
-        .flatMapLatest { rideRepo.searchRides(it) }
+        .flatMapLatest { (filter, bookedRideIds) ->
+            rideRepo.searchRides(filter).map { list ->
+                list.filter { it.id !in bookedRideIds }
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun loadUserBookings(uid: String) {
+        viewModelScope.launch {
+            rideRepo.getPassengerBookings(uid).collect {
+                _userBookings.value = it
+            }
+        }
+    }
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -70,6 +86,12 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        val app = requireActivity().application as SharISTApp
+        val uid = app.userRepository.currentUid
+        if (uid != null) {
+            viewModel.loadUserBookings(uid)
+        }
 
         etOrigin      = view.findViewById(R.id.et_origin)
         etDest        = view.findViewById(R.id.et_destination)

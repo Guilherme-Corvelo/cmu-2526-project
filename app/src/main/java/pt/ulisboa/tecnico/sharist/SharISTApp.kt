@@ -86,11 +86,14 @@ class SharISTApp : Application() {
             override suspend fun getRide(rideId: String) = delegate.getRide(rideId)
             override fun observeDriverRides(driverId: String) = delegate.observeDriverRides(driverId)
             override suspend fun createRide(ride: Ride) = delegate.createRide(ride)
+            override suspend fun cancelRide(rideId: String) = delegate.cancelRide(rideId)
+            override suspend fun completeRide(rideId: String) = delegate.completeRide(rideId)
             override suspend fun decrementSeat(rideId: String) = delegate.decrementSeat(rideId)
             override suspend fun createBooking(booking: Booking) = delegate.createBooking(booking)
             override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) = delegate.updateBookingStatus(bookingId, status)
             override fun observePassengerBookings(passengerId: String) = delegate.observePassengerBookings(passengerId)
             override fun observeRideBookings(rideId: String) = delegate.observeRideBookings(rideId)
+            override fun observeDriverBookings(driverId: String) = delegate.observeDriverBookings(driverId)
             override fun observeOpenRequests() = delegate.observeOpenRequests()
             override fun observePassengerRequests(passengerId: String) = delegate.observePassengerRequests(passengerId)
             override fun observeDriverRequests(driverId: String) = delegate.observeDriverRequests(driverId)
@@ -100,6 +103,8 @@ class SharISTApp : Application() {
             override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) = delegate.updateRequestStatus(requestId, status)
             override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) =
                 delegate.acceptRequest(requestId, driverId, driverName, driverRating)
+
+            override fun clearListeners() = delegate.clearListeners()
         }
     }
 

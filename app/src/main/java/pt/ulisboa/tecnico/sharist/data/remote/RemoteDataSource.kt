@@ -19,6 +19,8 @@ interface RemoteDataSource {
     suspend fun getRide(rideId: String): Ride?
     fun observeDriverRides(driverId: String): Flow<List<Ride>>
     suspend fun createRide(ride: Ride): String
+    suspend fun cancelRide(rideId: String)
+    suspend fun completeRide(rideId: String)
     suspend fun decrementSeat(rideId: String)
     
     // Bookings
@@ -26,6 +28,7 @@ interface RemoteDataSource {
     suspend fun updateBookingStatus(bookingId: String, status: BookingStatus)
     fun observePassengerBookings(passengerId: String): Flow<List<Booking>>
     fun observeRideBookings(rideId: String): Flow<List<Booking>>
+    fun observeDriverBookings(driverId: String): Flow<List<Booking>>
 
     // Ride Requests (Legacy/Alternative flow)
     fun observeOpenRequests(): Flow<List<RideRequest>>
@@ -36,4 +39,5 @@ interface RemoteDataSource {
     suspend fun completeRequest(requestId: String)
     suspend fun updateRequestStatus(requestId: String, status: RequestStatus)
     suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double)
+    fun clearListeners()
 }

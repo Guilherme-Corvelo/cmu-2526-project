@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.data.local.LocalDataSource
@@ -19,37 +20,62 @@ class RideRepository(
     private val local: LocalDataSource,
     private val network: NetworkMonitor
 ) {
-    fun getRides(filter: RideFilter): Flow<List<Ride>> {
-        if (network.isConnected) syncRidesToCache(filter)
-        return local.rideDao.observeOpenRides().map { it.map { e -> e.toDomain() } }
+    /**
+     * Observes rides matching the filter.
+     * It returns a flow that combines local database observation with background remote sync.
+     */
+    fun getRides(filter: RideFilter): Flow<List<Ride>> = callbackFlow {
+        val localJob = launch {
+            local.rideDao.observeFilteredRides(filter.origin, filter.destination)
+                .map { it.map { e -> e.toDomain() }.filter { r -> r.status == RideStatus.OPEN } }
+                .collect { trySend(it) }
+        }
+
+        var remoteJob: kotlinx.coroutines.Job? = null
+        if (network.isConnected) {
+            remoteJob = launch(Dispatchers.IO) {
+                remote.observeRides(filter)
+                    .catch { Log.e(TAG, "Remote sync error", it) }
+                    .collect { list ->
+                        local.rideDao.upsert(list.map { it.toEntity() })
+                        local.evictStale()
+                    }
+            }
+        }
+
+        awaitClose {
+            localJob.cancel()
+            remoteJob?.cancel()
+        }
     }
 
     // Alias for getRides to match some UI usages
     fun searchRides(filter: RideFilter) = getRides(filter)
 
-    fun getDriverRides(uid: String): Flow<List<Ride>> {
-        if (network.isConnected) syncDriverRidesToCache(uid)
-        return local.rideDao.observeDriverRides(uid).map { it.map { e -> e.toDomain() } }
-    }
-
-    private fun syncRidesToCache(filter: RideFilter) {
-        CoroutineScope(Dispatchers.IO).launch {
-            remote.observeRides(filter)
-                .catch { Log.e(TAG, "Remote sync error", it) }
-                .collect { list -> 
-                    local.rideDao.upsert(list.map { it.toEntity() })
-                    local.evictStale()
-                }
+    /**
+     * Observes rides created by a specific driver.
+     */
+    fun getDriverRides(uid: String): Flow<List<Ride>> = callbackFlow {
+        val localJob = launch {
+            local.rideDao.observeDriverRides(uid)
+                .map { it.map { e -> e.toDomain() }.filter { r -> r.status != RideStatus.CANCELLED } }
+                .collect { trySend(it) }
         }
-    }
 
-    private fun syncDriverRidesToCache(uid: String) {
-        CoroutineScope(Dispatchers.IO).launch {
-            remote.observeDriverRides(uid)
-                .catch { Log.e(TAG, "Remote sync error", it) }
-                .collect { list -> 
-                    local.rideDao.upsert(list.map { it.toEntity() })
-                }
+        var remoteJob: kotlinx.coroutines.Job? = null
+        if (network.isConnected) {
+            remoteJob = launch(Dispatchers.IO) {
+                remote.observeDriverRides(uid)
+                    .catch { Log.e(TAG, "Remote driver sync error", it) }
+                    .collect { list ->
+                        local.rideDao.upsert(list.map { it.toEntity() })
+                    }
+            }
+        }
+
+        awaitClose {
+            localJob.cancel()
+            remoteJob?.cancel()
         }
     }
 
@@ -67,11 +93,32 @@ class RideRepository(
 
     suspend fun getRide(rideId: String): Ride? {
         val remoteRide = runCatching { remote.getRide(rideId) }.getOrNull()
-        if (remoteRide != null) return remoteRide
+        if (remoteRide != null) {
+            local.rideDao.upsertOne(remoteRide.toEntity())
+            return remoteRide
+        }
         return local.rideDao.getById(rideId)?.toDomain()
     }
 
+    suspend fun cancelRide(rideId: String): Result<Unit> = runCatching {
+        remote.cancelRide(rideId)
+        local.rideDao.getById(rideId)?.let {
+            local.rideDao.upsertOne(it.copy(status = RideStatus.CANCELLED.name))
+        }
+    }
+
+    suspend fun completeRide(rideId: String): Result<Unit> = runCatching {
+        remote.completeRide(rideId)
+        local.rideDao.getById(rideId)?.let {
+            local.rideDao.upsertOne(it.copy(status = RideStatus.COMPLETED.name))
+        }
+    }
+
     fun getRideBookings(rideId: String): Flow<List<Booking>> = remote.observeRideBookings(rideId)
+
+    fun getDriverBookings(uid: String): Flow<List<Booking>> = remote.observeDriverBookings(uid)
+
+    fun getPassengerBookings(uid: String): Flow<List<Booking>> = remote.observePassengerBookings(uid)
 
     suspend fun bookRide(booking: Booking): Result<String> {
         if (!network.isConnected) {
