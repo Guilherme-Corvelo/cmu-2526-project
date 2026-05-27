@@ -59,8 +59,27 @@
             android:layout_height="wrap_content"
             android:textSize="14sp"
             android:textColor="#666666"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="4dp"
             android:text="Mon, 01 Jan 2026  09:00"/>
+
+        <TextView
+            android:id="@+id/tv_periodic_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textStyle="italic"
+            android:textColor="#388E3C"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone"
+            android:text="This is a periodic ride (Weekly)"/>
+
+        <CheckBox
+            android:id="@+id/cb_recurring_booking"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Book for every occurrence"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -159,6 +178,32 @@
             android:layout_height="wrap_content"
             android:text="Book this ride"
             android:padding="16dp"/>
+
+        <Button
+            android:id="@+id/btn_start_ride"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Start Ride"
+            android:padding="16dp"
+            android:visibility="gone"
+            android:layout_marginTop="8dp"
+            style="@style/Widget.Material3.Button.TonalButton"
+            app:backgroundTint="#E8F5E9"
+            app:rippleColor="#C8E6C9"
+            android:textColor="#2E7D32"/>
+
+        <Button
+            android:id="@+id/btn_finish_ride"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Finish Ride"
+            android:padding="16dp"
+            android:visibility="gone"
+            android:layout_marginTop="8dp"
+            style="@style/Widget.Material3.Button.TonalButton"
+            app:backgroundTint="#E3F2FD"
+            app:rippleColor="#BBDEFB"
+            android:textColor="#1565C0"/>
 
         <Button
             android:id="@+id/btn_cancel_ride"

@@ -160,6 +160,7 @@ class MyRequestAdapter(
             h.tvStatus.text = "Booking: ${item.status}"
             
             h.btnAction.visibility = View.GONE
+
             h.btnCancel.visibility = if (item.status == BookingStatus.PENDING || item.status == BookingStatus.ACCEPTED) View.VISIBLE else View.GONE
             h.btnCancel.setOnClickListener { onCancel(item) }
 

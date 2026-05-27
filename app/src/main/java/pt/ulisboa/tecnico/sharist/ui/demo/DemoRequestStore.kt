@@ -51,6 +51,11 @@ object DemoRequestStore {
 
     fun submitRequest(origin: String, destination: String, requestedTime: Date = Date()): Boolean {
         if (!canPassengerCreateRequest()) return false
+        
+        val price = 3.5
+        // Upfront deduction
+        DemoRideStore.updateBalance(DEMO_CLIENT_ID, -price)
+        
         requests.value = listOf(
             RideRequest(
                 id = "demo_req_${UUID.randomUUID()}",
@@ -59,8 +64,10 @@ object DemoRequestStore {
                 origin = origin,
                 destination = destination,
                 requestedTime = requestedTime,
-                estimatedPrice = 3.5,
+                estimatedPrice = price,
                 status = RequestStatus.OPEN,
+                passengerPaid = true,
+                passengerRefunded = false,
                 createdAt = Date()
             )
         ) + requests.value
@@ -84,18 +91,38 @@ object DemoRequestStore {
         return accepted
     }
 
-    fun denyRequest(requestId: String) {
+    fun denyRequest(requestId: String, currentUid: String? = null) {
         requests.value = requests.value.map {
-            if (it.id == requestId && it.status == RequestStatus.OPEN) it.copy(status = RequestStatus.CANCELLED) else it
+            if (it.id == requestId && it.status == RequestStatus.OPEN) {
+                var updated = it.copy(status = RequestStatus.CANCELLED)
+                
+                // Auto-refund logic for demo
+                if (updated.passengerPaid && !updated.passengerRefunded) {
+                    val uid = currentUid ?: DEMO_CLIENT_ID // Default for demo if not provided
+                    if (uid == updated.passengerId) {
+                        DemoRideStore.updateBalance(updated.passengerId, updated.estimatedPrice)
+                        updated = updated.copy(passengerRefunded = true)
+                    }
+                }
+                updated
+            } else it
         }
     }
 
-    fun completeRequest(requestId: String): Boolean {
+    fun completeRequest(requestId: String, currentUid: String? = null): Boolean {
         var completed = false
         requests.value = requests.value.map {
             if (it.id == requestId && it.driverId == DEMO_DRIVER_ID && it.status == RequestStatus.ACCEPTED) {
                 completed = true
-                it.copy(status = RequestStatus.COMPLETED)
+                var updated = it.copy(status = RequestStatus.COMPLETED)
+                
+                val uid = currentUid ?: DEMO_DRIVER_ID
+                if (uid == updated.driverId && !updated.driverPaid) {
+                    DemoRideStore.updateBalance(updated.driverId, updated.estimatedPrice)
+                    updated = updated.copy(driverPaid = true)
+                }
+                
+                updated
             } else it
         }
         return completed

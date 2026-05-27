@@ -114,11 +114,40 @@ class RideRepository(
         }
     }
 
+    suspend fun startRide(rideId: String): Result<Unit> = runCatching {
+        remote.startRide(rideId)
+        local.rideDao.getById(rideId)?.let {
+            local.rideDao.upsertOne(it.copy(status = RideStatus.EN_ROUTE.name))
+        }
+    }
+
     fun getRideBookings(rideId: String): Flow<List<Booking>> = remote.observeRideBookings(rideId)
 
     fun getDriverBookings(uid: String): Flow<List<Booking>> = remote.observeDriverBookings(uid)
 
     fun getPassengerBookings(uid: String): Flow<List<Booking>> = remote.observePassengerBookings(uid)
+        .onEach { bookings ->
+            // Passive Reconciliation: Automatically trigger refund for rejected/cancelled bookings
+            bookings.forEach { booking ->
+                if (booking.passengerId == uid && 
+                    (booking.status == BookingStatus.REJECTED || booking.status == BookingStatus.CANCELLED) &&
+                    booking.passengerPaid && !booking.passengerRefunded) {
+                    
+                    Log.d(TAG, "Auto-reconciling refund for booking ${booking.id}")
+                    // We launch this in a separate scope or just fire-and-forget
+                    // Since this is a repository, we can't easily access a viewModelScope.
+                    // However, we can use a global or pass a scope. 
+                    // For now, let's assume we can use a simple CoroutineScope(Dispatchers.IO)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            remote.updateBookingStatus(booking.id, booking.status)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Auto-refund failed", e)
+                        }
+                    }
+                }
+            }
+        }
 
     suspend fun bookRide(booking: Booking): Result<String> {
         if (!network.isConnected) {
@@ -162,9 +191,31 @@ class RideRequestRepository(
     private val network: NetworkMonitor
 ) {
     fun getOpenRequests(): Flow<List<RideRequest>> = remote.observeOpenRequests()
+        .map { list -> 
+            val uid = remote.currentUid
+            list.filter { !it.deniedBy.contains(uid) }
+        }
 
     fun getPassengerRequests(passengerId: String): Flow<List<RideRequest>> =
         remote.observePassengerRequests(passengerId)
+            .onEach { requests ->
+                // Passive Reconciliation: Automatically trigger refund for cancelled requests
+                requests.forEach { req ->
+                    if (req.passengerId == passengerId &&
+                        req.status == RequestStatus.CANCELLED &&
+                        req.passengerPaid && !req.passengerRefunded) {
+                        
+                        Log.d("RideRequestRepository", "Auto-reconciling refund for request ${req.id}")
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                remote.updateRequestStatus(req.id, req.status)
+                            } catch (e: Exception) {
+                                Log.e("RideRequestRepository", "Auto-refund failed", e)
+                            }
+                        }
+                    }
+                }
+            }
 
     fun getDriverRequests(driverId: String): Flow<List<RideRequest>> =
         remote.observeDriverRequests(driverId)
@@ -175,6 +226,10 @@ class RideRequestRepository(
 
     suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double): Result<Unit> = runCatching {
         remote.acceptRequest(requestId, driverId, driverName, driverRating)
+    }
+
+    suspend fun denyRequest(requestId: String, driverId: String): Result<Unit> = runCatching {
+        remote.denyRequest(requestId, driverId)
     }
 
     suspend fun cancelRequest(requestId: String): Result<Unit> = runCatching {

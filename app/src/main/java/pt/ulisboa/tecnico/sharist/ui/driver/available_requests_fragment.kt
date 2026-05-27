@@ -70,11 +70,11 @@ class AvailableRequestsFragment : Fragment() {
             },
             onDeny = { req ->
                 viewLifecycleOwner.lifecycleScope.launch {
-                    val res = requestRepo.updateRequestStatus(req.id, pt.ulisboa.tecnico.sharist.data.model.RequestStatus.CANCELLED)
+                    val res = requestRepo.denyRequest(req.id, session.uid ?: "")
                     if (res.isFailure) {
                         Toast.makeText(requireContext(), "Failed to deny: ${res.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(requireContext(), "Request denied", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Request hidden", Toast.LENGTH_SHORT).show()
                     }
                 }
             },

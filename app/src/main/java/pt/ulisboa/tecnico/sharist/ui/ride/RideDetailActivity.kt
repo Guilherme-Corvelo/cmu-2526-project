@@ -85,9 +85,14 @@ class RideDetailViewModel(
             }
     }
 
-    fun bookRide(rideId: String, seats: Int) {
+    fun bookRide(rideId: String, seats: Int, recurring: Boolean = false) {
         val uid = userRepo.currentUid ?: run {
             _bookingState.value = BookingState.Error("Not logged in")
+            return
+        }
+        val ride = _ride.value ?: return
+        if (ride.driverId == uid) {
+            _bookingState.value = BookingState.Error("You cannot book your own ride")
             return
         }
         _bookingState.value = BookingState.Loading
@@ -106,21 +111,13 @@ class RideDetailViewModel(
                 destination      = ride.destination,
                 departureTime    = ride.departureTime,
                 driverName       = ride.driverName,
-                driverId         = ride.driverId
+                driverId         = ride.driverId,
+                recurring        = recurring
             )
             rideRepo.bookRide(booking)
                 .onSuccess { id ->
                     val isPending = id.startsWith("pending_")
                     _bookingState.value = BookingState.Success(id, isPending)
-                    
-                    if (!isPending) {
-                        // If online, we can immediately update balance and seats
-                        userRepo.updateBalance(uid, -(ride.pricePerSeat * seats))
-                        // We also decrement seats on the server immediately for better UX 
-                        // (FirestoreDataSource.createBooking doesn't auto-decrement because 
-                        // bookings might be PENDING/require driver approval, but for now 
-                        // let's assume they are pending and decrement happens on ACCEPT)
-                    }
                 }
                 .onFailure { e ->
                     _bookingState.value = BookingState.Error(e.message ?: "Booking failed")
@@ -167,6 +164,18 @@ class RideDetailViewModel(
         }
     }
 
+    fun startRide(rideId: String) {
+        viewModelScope.launch {
+            _bookingState.value = BookingState.Loading
+            rideRepo.startRide(rideId).onSuccess {
+                _ride.value = _ride.value?.copy(status = RideStatus.EN_ROUTE)
+                _bookingState.value = BookingState.Success("started", false)
+            }.onFailure {
+                _bookingState.value = BookingState.Error(it.message ?: "Start failed")
+            }
+        }
+    }
+
     fun respondToBooking(bookingId: String, accepted: Boolean) {
         viewModelScope.launch {
             runCatching {
@@ -204,6 +213,8 @@ class RideDetailActivity : AppCompatActivity() {
     private lateinit var tvDeparture: TextView
     private lateinit var tvSeats: TextView
     private lateinit var tvPrice: TextView
+    private lateinit var tvPeriodicInfo: TextView
+    private lateinit var cbRecurringBooking: CheckBox
     private lateinit var cvWeatherWarning: View
     private lateinit var tvWeatherText: TextView
     private lateinit var tvRequests: TextView
@@ -212,6 +223,8 @@ class RideDetailActivity : AppCompatActivity() {
     private lateinit var btnRejectRequest: Button
     private lateinit var btnViewPassengerProfile: Button
     private lateinit var btnBook: Button
+    private lateinit var btnStartRide: Button
+    private lateinit var btnFinishRide: Button
     private lateinit var btnCancelRide: Button
     private lateinit var progressBar: ProgressBar
     private var selectedPendingBooking: Booking? = null
@@ -237,6 +250,8 @@ class RideDetailActivity : AppCompatActivity() {
         tvDeparture      = findViewById(R.id.tv_departure)
         tvSeats          = findViewById(R.id.tv_seats)
         tvPrice          = findViewById(R.id.tv_price)
+        tvPeriodicInfo   = findViewById(R.id.tv_periodic_info)
+        cbRecurringBooking = findViewById(R.id.cb_recurring_booking)
         cvWeatherWarning = findViewById(R.id.tv_weather_warning)
         tvWeatherText    = findViewById(R.id.tv_weather_text)
         tvRequests       = findViewById(R.id.tv_requests)
@@ -245,6 +260,8 @@ class RideDetailActivity : AppCompatActivity() {
         btnRejectRequest = findViewById(R.id.btn_reject_request)
         btnViewPassengerProfile = findViewById(R.id.btn_view_passenger_profile)
         btnBook          = findViewById(R.id.btn_book)
+        btnStartRide     = findViewById(R.id.btn_start_ride)
+        btnFinishRide    = findViewById(R.id.btn_finish_ride)
         btnCancelRide    = findViewById(R.id.btn_cancel_ride)
         progressBar      = findViewById(R.id.progress_bar)
     }
@@ -265,9 +282,19 @@ class RideDetailActivity : AppCompatActivity() {
                         if (isOwner) {
                             btnBook.visibility = View.GONE
                             btnCancelRide.visibility = if (isCancelled || isCompleted) View.GONE else View.VISIBLE
+                            cbRecurringBooking.visibility = View.GONE
+                            
+                            // Show Start/Finish based on status
+                            btnStartRide.visibility = if (ride?.status == RideStatus.OPEN || ride?.status == RideStatus.FULL) View.VISIBLE else View.GONE
+                            btnFinishRide.visibility = if (ride?.status == RideStatus.EN_ROUTE) View.VISIBLE else View.GONE
                         } else {
-                            btnBook.visibility = if (isCancelled || isCompleted) View.GONE else View.VISIBLE
+                            btnBook.visibility = if (isCancelled || isCompleted || ride?.status == RideStatus.EN_ROUTE) View.GONE else View.VISIBLE
                             btnCancelRide.visibility = View.GONE
+                            btnStartRide.visibility = View.GONE
+                            btnFinishRide.visibility = View.GONE
+                            if (ride?.periodic == true) {
+                                cbRecurringBooking.visibility = View.VISIBLE
+                            }
                         }
                     }
                 }
@@ -364,6 +391,19 @@ class RideDetailActivity : AppCompatActivity() {
         tvSeats.text      = "${ride.seatsAvailable} of ${ride.seatsTotal} seats available"
         tvPrice.text      = "€%.2f per seat".format(ride.pricePerSeat)
 
+        if (ride.periodic) {
+            tvPeriodicInfo.visibility = View.VISIBLE
+            tvPeriodicInfo.text = if (ride.periodicLabel.isNotBlank()) 
+                "This is a periodic ride (${ride.periodicLabel})" 
+                else "This is a periodic ride"
+            
+            // Re-check visibility based on updated isRideOwner flow
+            cbRecurringBooking.visibility = if (viewModel.isRideOwner.value) View.GONE else View.VISIBLE
+        } else {
+            tvPeriodicInfo.visibility = View.GONE
+            cbRecurringBooking.visibility = View.GONE
+        }
+
         val app = application as SharISTApp
         ImageLoader.load(
             imageView   = ivCarPhoto,
@@ -374,7 +414,9 @@ class RideDetailActivity : AppCompatActivity() {
 
         btnBook.isEnabled = ride.seatsAvailable > 0 && !viewModel.isRideOwner.value
         btnBook.setOnClickListener {
-            if (ride.seatsAvailable > 0) viewModel.bookRide(rideId, seats = 1)
+            if (ride.seatsAvailable > 0) {
+                viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
+            }
         }
 
         btnCancelRide.setOnClickListener {
@@ -386,14 +428,44 @@ class RideDetailActivity : AppCompatActivity() {
                 .show()
         }
 
+        btnStartRide.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Start Ride")
+                .setMessage("Are you ready to depart?")
+                .setPositiveButton("Start") { _, _ -> viewModel.startRide(rideId) }
+                .setNegativeButton("Not yet", null)
+                .show()
+        }
+
+        btnFinishRide.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Finish Ride")
+                .setMessage("Have you reached your destination?")
+                .setPositiveButton("Finish") { _, _ -> viewModel.finishRide(rideId) }
+                .setNegativeButton("No", null)
+                .show()
+        }
+
         if (ride.status == RideStatus.CANCELLED) {
             btnBook.isEnabled = false
             btnBook.text = "Ride Cancelled"
             btnCancelRide.visibility = View.GONE
+            btnStartRide.visibility = View.GONE
+            btnFinishRide.visibility = View.GONE
         } else if (ride.status == RideStatus.COMPLETED) {
             btnBook.isEnabled = false
             btnBook.text = "Ride Completed"
             btnCancelRide.visibility = View.GONE
+            btnStartRide.visibility = View.GONE
+            btnFinishRide.visibility = View.GONE
+        } else if (ride.status == RideStatus.EN_ROUTE) {
+            btnBook.isEnabled = false
+            btnBook.text = "Ride in Progress"
+            btnCancelRide.visibility = View.GONE
+            btnStartRide.visibility = View.GONE
+            if (viewModel.isRideOwner.value) {
+                btnFinishRide.visibility = View.VISIBLE
+            }
         }
     }
 

@@ -208,8 +208,9 @@ class ActiveRideAdapter(
         val origin = if (item is RideRequest) item.origin else (item as Booking).origin
         val destination = if (item is RideRequest) item.destination else (item as Booking).destination
         val status = if (item is RideRequest) item.status.name else (item as Booking).status.name
+        val isRecurring = if (item is Booking) item.recurring else false
 
-        holder.tvRoute.text = "$passengerName: $origin → $destination"
+        holder.tvRoute.text = if (isRecurring) "⟳ $passengerName: $origin → $destination" else "$passengerName: $origin → $destination"
 
         val (statusText, btnText, nextStatus) = when {
             item is RideRequest && item.status == RequestStatus.ACCEPTED -> Triple("Accepted - Get moving!", "Start Trip", RequestStatus.EN_ROUTE)

@@ -36,6 +36,7 @@ class RideAdapter(
         private val tvSeats:       TextView  = itemView.findViewById(R.id.tv_seats)
         private val tvPrice:       TextView  = itemView.findViewById(R.id.tv_price)
         private val ivMeteredHint: ImageView = itemView.findViewById(R.id.iv_metered_hint)
+        private val tvPeriodicBadge: TextView = itemView.findViewById(R.id.tv_periodic_badge)
 
         private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
 
@@ -46,6 +47,13 @@ class RideAdapter(
             tvDeparture.text  = ride.departureTime?.let { dateFmt.format(it) } ?: "—"
             tvSeats.text      = "${ride.seatsAvailable} seat(s) left"
             tvPrice.text      = "€%.2f / seat".format(ride.pricePerSeat)
+
+            tvPeriodicBadge.visibility = if (ride.periodic) View.VISIBLE else View.GONE
+            if (ride.periodic && ride.periodicLabel.isNotBlank()) {
+                tvPeriodicBadge.text = ride.periodicLabel
+            } else {
+                tvPeriodicBadge.text = "Periodic"
+            }
 
             // Lazy image load with metered awareness
             ImageLoader.load(

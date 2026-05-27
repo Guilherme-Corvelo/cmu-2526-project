@@ -8,6 +8,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import java.util.*
 import pt.ulisboa.tecnico.sharist.data.model.*
 
 class FirebaseDataSource(
@@ -39,15 +40,19 @@ class FirebaseDataSource(
     }
 
     override fun observeRides(filter: RideFilter): Flow<List<Ride>> = callbackFlow {
-        // Basic implementation of filtering in Firestore
-        var query: Query = ridesCol.whereEqualTo("status", RideStatus.OPEN.name)
+        // We observe all OPEN and FULL rides because a FULL periodic ride 
+        // will transition to a new OPEN one once completed.
+        var query: Query = ridesCol.whereIn("status", listOf(RideStatus.OPEN.name, RideStatus.FULL.name))
         
         val listener = query.addSnapshotListener { snap, err ->
             if (err != null) close(err)
             else {
                 val allRides = snap?.toObjects(Ride::class.java)?.filterNotNull() ?: emptyList()
                 // Apply further filters that are harder to do in a single Firestore query
+                val now = Date()
                 val filtered = allRides.filter { ride ->
+                    val isFuture = ride.departureTime?.after(now) ?: false
+                    isFuture &&
                     (filter.origin.isBlank() || ride.origin.contains(filter.origin, ignoreCase = true)) &&
                     (filter.destination.isBlank() || ride.destination.contains(filter.destination, ignoreCase = true)) &&
                     ride.seatsAvailable >= filter.minSeats &&
@@ -106,13 +111,96 @@ class FirebaseDataSource(
     }
 
     override suspend fun completeRide(rideId: String) {
+        val bookings = bookingsCol.whereEqualTo("rideId", rideId).get().await()
+
         db.runTransaction { tx ->
             val rideRef = ridesCol.document(rideId)
+            val ride = tx.get(rideRef).toObject(Ride::class.java)
+                ?: return@runTransaction
+
             tx.update(rideRef, "status", RideStatus.COMPLETED.name)
+
+            // If it's a periodic ride, we create the NEXT occurrence automatically
+            if (ride.periodic) {
+                val nextDate = calculateNextOccurrence(ride.departureTime, ride.periodicLabel)
+                val nextRideRef = ridesCol.document()
+
+                // Process bookings to handle completion and recurring carry-over
+                for (doc in bookings.documents) {
+                    val booking = doc.toObject(Booking::class.java) ?: continue
+                    
+                    val isActive = booking.status == BookingStatus.ACCEPTED || 
+                                   booking.status == BookingStatus.PICKED_UP || 
+                                   booking.status == BookingStatus.EN_ROUTE
+                    
+                    if (isActive) {
+                        tx.update(doc.reference, "status", BookingStatus.COMPLETED.name)
+                    } else if (booking.status == BookingStatus.PENDING) {
+                        tx.update(doc.reference, "status", BookingStatus.REJECTED.name)
+                    }
+
+                    // Carry over recurring bookings (even if already completed individually)
+                    // They start as PENDING in the next ride instance.
+                    if (booking.recurring && (isActive || booking.status == BookingStatus.COMPLETED)) {
+                        val nextBooking = booking.copy(
+                            id = "",
+                            rideId = nextRideRef.id,
+                            status = BookingStatus.PENDING, 
+                            departureTime = nextDate,
+                            createdAt = null,
+                            passengerReviewed = false,
+                            driverReviewed = false
+                        )
+                        val nextBookingRef = bookingsCol.document()
+                        tx.set(nextBookingRef, nextBooking.copy(id = nextBookingRef.id))
+                    }
+                }
+
+                // Next ride starts with fresh capacity. 
+                // Recurring bookings are PENDING, so they don't subtract seats yet.
+                val nextRide = ride.copy(
+                    id = nextRideRef.id,
+                    status = RideStatus.OPEN,
+                    departureTime = nextDate,
+                    seatsAvailable = ride.seatsTotal, // USE seatsTotal to reset capacity
+                    createdAt = null
+                )
+                tx.set(nextRideRef, nextRide)
+            } else {
+                // Not periodic, just mass complete bookings
+                for (doc in bookings.documents) {
+                    val booking = doc.toObject(Booking::class.java) ?: continue
+                    if (booking.status == BookingStatus.ACCEPTED || booking.status == BookingStatus.PICKED_UP || booking.status == BookingStatus.EN_ROUTE) {
+                        tx.update(doc.reference, "status", BookingStatus.COMPLETED.name)
+                    } else if (booking.status == BookingStatus.PENDING) {
+                        tx.update(doc.reference, "status", BookingStatus.REJECTED.name)
+                    }
+                }
+            }
         }.await()
+    }
+
+    override suspend fun startRide(rideId: String) {
+        ridesCol.document(rideId).update("status", RideStatus.EN_ROUTE.name).await()
+    }
+
+    private fun calculateNextOccurrence(currentDate: Date?, label: String): Date {
+        val cal = Calendar.getInstance()
+        if (currentDate != null) cal.time = currentDate
         
-        // Note: For bookings, we rely on the individual status updates 
-        // that happen through the "My Activities" screen or mass finish logic in the UI
+        when (label.lowercase()) {
+            "daily" -> cal.add(Calendar.DAY_OF_YEAR, 1)
+            "weekdays" -> {
+                do {
+                    cal.add(Calendar.DAY_OF_YEAR, 1)
+                } while (cal.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY || cal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY)
+            }
+            "weekly" -> cal.add(Calendar.WEEK_OF_YEAR, 1)
+            "biweekly" -> cal.add(Calendar.WEEK_OF_YEAR, 2)
+            "monthly" -> cal.add(Calendar.MONTH, 1)
+            else -> cal.add(Calendar.DAY_OF_YEAR, 1) // Default to next day
+        }
+        return cal.time
     }
 
     override suspend fun decrementSeat(rideId: String) {
@@ -129,8 +217,26 @@ class FirebaseDataSource(
 
     override suspend fun createBooking(booking: Booking): String {
         val ref = bookingsCol.document()
-        ref.set(booking.copy(id = ref.id)).await()
-        return ref.id
+        val bookingId = ref.id
+        
+        db.runTransaction { tx ->
+            // 1. Deduct balance from passenger upfront
+            val pRef = usersCol.document(booking.passengerId)
+            val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
+            if (pBal < booking.totalPrice) throw Exception("Insufficient balance")
+            
+            tx.update(pRef, "balance", pBal - booking.totalPrice)
+            
+            // 2. Create the booking as paid
+            val toSave = booking.copy(
+                id = bookingId,
+                passengerPaid = true,
+                passengerRefunded = false
+            )
+            tx.set(ref, toSave)
+        }.await()
+        
+        return bookingId
     }
 
     override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) {
@@ -139,14 +245,15 @@ class FirebaseDataSource(
             val booking = tx.get(bookingRef).toObject(Booking::class.java)
                 ?: error("Booking not found")
 
-            // State machine for Bookings
+            // State machine for Bookings (including idempotent transitions for auto-refunds)
             val current = booking.status
             val valid = when (status) {
-                BookingStatus.ACCEPTED, BookingStatus.REJECTED -> current == BookingStatus.PENDING
+                BookingStatus.ACCEPTED -> current == BookingStatus.PENDING
+                BookingStatus.REJECTED -> current == BookingStatus.PENDING || current == BookingStatus.REJECTED
                 BookingStatus.EN_ROUTE -> current == BookingStatus.ACCEPTED
                 BookingStatus.PICKED_UP -> current == BookingStatus.EN_ROUTE
-                BookingStatus.COMPLETED -> current == BookingStatus.PICKED_UP || current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE
-                BookingStatus.CANCELLED -> current != BookingStatus.COMPLETED && current != BookingStatus.REJECTED
+                BookingStatus.COMPLETED -> current == BookingStatus.PICKED_UP || current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.COMPLETED
+                BookingStatus.CANCELLED -> (current != BookingStatus.COMPLETED && current != BookingStatus.REJECTED) || current == BookingStatus.CANCELLED
                 else -> false
             }
             if (!valid) return@runTransaction
@@ -171,17 +278,28 @@ class FirebaseDataSource(
                 val uid = currentUid
                 
                 // Only update the balance of the user performing the action to avoid PERMISSION_DENIED
-                // Ideally this should be handled by a Cloud Function.
-                if (uid == booking.driverId) {
+                if (uid == booking.driverId && !booking.driverPaid) {
                     val dRef = usersCol.document(booking.driverId)
                     val dBal = tx.get(dRef).getDouble("balance") ?: 0.0
                     tx.update(dRef, "balance", dBal + amount)
-                } else if (uid == booking.passengerId) {
+                    tx.update(bookingRef, "driverPaid", true)
+                }
+                // Passenger already paid upfront in createBooking
+                
+            } else if ((status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) && 
+                booking.passengerPaid && !booking.passengerRefunded) {
+                
+                val uid = currentUid
+                // Only the passenger can trigger their own refund to avoid PERMISSION_DENIED
+                if (uid == booking.passengerId) {
                     val pRef = usersCol.document(booking.passengerId)
                     val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
-                    tx.update(pRef, "balance", pBal - amount)
+                    tx.update(pRef, "balance", pBal + booking.totalPrice)
+                    tx.update(bookingRef, "passengerRefunded", true)
                 }
-            } else if (status == BookingStatus.CANCELLED && (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)) {
+            }
+            
+            if (status == BookingStatus.CANCELLED && (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)) {
                 // Return seats if the booking was already subtracting them from the ride
                 val rideRef = ridesCol.document(booking.rideId)
                 val rideSnap = tx.get(rideRef)
@@ -281,13 +399,27 @@ class FirebaseDataSource(
 
     override suspend fun createRequest(request: RideRequest): String {
         val ref = requestsCol.document()
-        // We set the ID explicitly so the object inside the document also has it
-        val toSave = request.copy(
-            id = ref.id,
-            createdAt = null // Let Firestore set this via @ServerTimestamp
-        )
-        ref.set(toSave).await()
-        return ref.id
+        val requestId = ref.id
+        
+        db.runTransaction { tx ->
+            // 1. Deduct balance from passenger upfront
+            val pRef = usersCol.document(request.passengerId)
+            val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
+            if (pBal < request.estimatedPrice) throw Exception("Insufficient balance")
+            
+            tx.update(pRef, "balance", pBal - request.estimatedPrice)
+            
+            // 2. Create the request as paid
+            val toSave = request.copy(
+                id = requestId,
+                passengerPaid = true,
+                passengerRefunded = false,
+                createdAt = null // Firestore @ServerTimestamp
+            )
+            tx.set(ref, toSave)
+        }.await()
+        
+        return requestId
     }
     override suspend fun cancelRequest(requestId: String) {
         updateRequestStatus(requestId, RequestStatus.CANCELLED)
@@ -303,25 +435,58 @@ class FirebaseDataSource(
             val req = tx.get(ref).toObject(RideRequest::class.java) ?: error("Request not found")
 
             val current = req.status
-            if (current == RequestStatus.COMPLETED || current == RequestStatus.CANCELLED) return@runTransaction
+            val uid = currentUid
+
+            // Special case: Driver cancels an accepted request -> Reset to OPEN
+            if (status == RequestStatus.CANCELLED && uid == req.driverId && req.driverId != null) {
+                tx.update(ref, "status", RequestStatus.OPEN.name)
+                tx.update(ref, "driverId", null)
+                tx.update(ref, "driverName", null)
+                tx.update(ref, "driverRating", 5.0)
+                return@runTransaction
+            }
+
+            // Allow idempotent transitions for auto-refund
+            val valid = when (status) {
+                RequestStatus.COMPLETED -> current != RequestStatus.CANCELLED
+                RequestStatus.CANCELLED -> current != RequestStatus.COMPLETED || current == RequestStatus.CANCELLED
+                else -> true
+            }
+            if (!valid) return@runTransaction
 
             if (status == RequestStatus.COMPLETED) {
-                val driverId = req.driverId ?: return@runTransaction // Safety
+                val driverId = req.driverId ?: return@runTransaction
                 val amount = req.estimatedPrice
-                val uid = currentUid
 
-                if (uid == driverId) {
+                if (uid == driverId && !req.driverPaid) {
                     val dRef = usersCol.document(driverId)
                     val dBal = tx.get(dRef).getDouble("balance") ?: 0.0
                     tx.update(dRef, "balance", dBal + amount)
-                } else if (uid == req.passengerId) {
+                    tx.update(ref, "driverPaid", true)
+                }
+                // Passenger paid upfront
+            } else if (status == RequestStatus.CANCELLED && req.passengerPaid && !req.passengerRefunded) {
+                if (uid == req.passengerId) {
                     val pRef = usersCol.document(req.passengerId)
                     val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
-                    tx.update(pRef, "balance", pBal - amount)
+                    tx.update(pRef, "balance", pBal + req.estimatedPrice)
+                    tx.update(ref, "passengerRefunded", true)
                 }
             }
 
             tx.update(ref, "status", status.name)
+        }.await()
+    }
+
+    override suspend fun denyRequest(requestId: String, driverId: String) {
+        db.runTransaction { tx ->
+            val ref = requestsCol.document(requestId)
+            val req = tx.get(ref).toObject(RideRequest::class.java) ?: return@runTransaction
+            val currentDenied = req.deniedBy.toMutableList()
+            if (!currentDenied.contains(driverId)) {
+                currentDenied.add(driverId)
+                tx.update(ref, "deniedBy", currentDenied)
+            }
         }.await()
     }
 

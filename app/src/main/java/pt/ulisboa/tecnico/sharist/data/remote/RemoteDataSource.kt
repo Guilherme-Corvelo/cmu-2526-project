@@ -21,6 +21,7 @@ interface RemoteDataSource {
     suspend fun createRide(ride: Ride): String
     suspend fun cancelRide(rideId: String)
     suspend fun completeRide(rideId: String)
+    suspend fun startRide(rideId: String)
     suspend fun decrementSeat(rideId: String)
     
     // Bookings
@@ -38,6 +39,7 @@ interface RemoteDataSource {
     suspend fun cancelRequest(requestId: String)
     suspend fun completeRequest(requestId: String)
     suspend fun updateRequestStatus(requestId: String, status: RequestStatus)
+    suspend fun denyRequest(requestId: String, driverId: String)
     suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double)
     fun clearListeners()
 }

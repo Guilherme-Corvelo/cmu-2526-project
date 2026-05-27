@@ -13,7 +13,7 @@ object DemoRideStore {
         displayName = DemoRequestStore.DEMO_CLIENT_NAME,
         email = "client@demo.app",
         driver = false,
-        balance = 25.0
+        balance = 1000.0
     )
 
     private val DEMO_DRIVER = User(
@@ -155,20 +155,225 @@ object DemoRideStore {
     }
 
     fun completeRide(rideId: String) {
+        val now = Date()
+        val currentBookings = bookingsFlow.value.filter { it.rideId == rideId }
+        
         ridesFlow.value = ridesFlow.value.map { ride ->
-            if (ride.id == rideId) ride.copy(status = RideStatus.COMPLETED) else ride
+            if (ride.id == rideId) {
+                val updatedRide = ride.copy(status = RideStatus.COMPLETED)
+                
+                if (ride.periodic) {
+                    val nextDate = calculateNextOccurrence(ride.departureTime, ride.periodicLabel)
+                    val nextRideId = "mock_ride_${UUID.randomUUID()}"
+                    
+                    // Create next ride
+                    val nextRide = ride.copy(
+                        id = nextRideId,
+                        status = RideStatus.OPEN,
+                        departureTime = nextDate,
+                        seatsAvailable = ride.seatsTotal,
+                        createdAt = now
+                    )
+                    // We'll add this to the list after the map
+                    
+                    // Handle bookings
+                    bookingsFlow.value = bookingsFlow.value.map { booking ->
+                        if (booking.rideId == rideId) {
+                            val isActive = booking.status == BookingStatus.ACCEPTED || 
+                                           booking.status == BookingStatus.PICKED_UP || 
+                                           booking.status == BookingStatus.EN_ROUTE
+                            
+                            val updated = if (isActive) {
+                                // Driver gets paid upon completion in demo
+                                if (!booking.driverPaid) {
+                                    updateBalance(booking.driverId, booking.totalPrice)
+                                    booking.copy(status = BookingStatus.COMPLETED, driverPaid = true)
+                                } else {
+                                    booking.copy(status = BookingStatus.COMPLETED)
+                                }
+                            } else if (booking.status == BookingStatus.PENDING) {
+                                booking.copy(status = BookingStatus.REJECTED)
+                            } else {
+                                booking
+                            }
+
+                            // Carry over recurring
+                            if (booking.recurring && (isActive || booking.status == BookingStatus.COMPLETED)) {
+                                val nextBooking = booking.copy(
+                                    id = "mock_booking_${UUID.randomUUID()}",
+                                    rideId = nextRideId,
+                                    status = BookingStatus.PENDING,
+                                    departureTime = nextDate,
+                                    createdAt = now,
+                                    passengerReviewed = false,
+                                    driverReviewed = false,
+                                    passengerPaid = false,
+                                    driverPaid = false
+                                )
+                                // Add to list (we'll do this outside)
+                                demoNextBookings.add(nextBooking)
+                            }
+                            updated
+                        } else booking
+                    }.toMutableList()
+                    
+                    demoNextRides.add(nextRide)
+                } else {
+                    // Non-periodic: just complete bookings
+                    bookingsFlow.value = bookingsFlow.value.map { booking ->
+                        if (booking.rideId == rideId) {
+                            val isActive = booking.status == BookingStatus.ACCEPTED || 
+                                           booking.status == BookingStatus.PICKED_UP || 
+                                           booking.status == BookingStatus.EN_ROUTE
+                            
+                            if (isActive) {
+                                if (!booking.driverPaid) {
+                                    updateBalance(booking.driverId, booking.totalPrice)
+                                    booking.copy(status = BookingStatus.COMPLETED, driverPaid = true)
+                                } else {
+                                    booking.copy(status = BookingStatus.COMPLETED)
+                                }
+                            } else if (booking.status == BookingStatus.PENDING) {
+                                booking.copy(status = BookingStatus.REJECTED)
+                            } else booking
+                        } else booking
+                    }.toMutableList()
+                }
+                updatedRide
+            } else ride
+        }.toMutableList()
+
+        if (demoNextRides.isNotEmpty()) {
+            ridesFlow.value = (ridesFlow.value + demoNextRides).toMutableList()
+            demoNextRides.clear()
+        }
+        if (demoNextBookings.isNotEmpty()) {
+            bookingsFlow.value = (bookingsFlow.value + demoNextBookings).toMutableList()
+            demoNextBookings.clear()
+        }
+    }
+
+    private val demoNextRides = mutableListOf<Ride>()
+    private val demoNextBookings = mutableListOf<Booking>()
+
+    private fun calculateNextOccurrence(currentDate: Date?, label: String): Date {
+        val cal = java.util.Calendar.getInstance()
+        if (currentDate != null) cal.time = currentDate
+        
+        when (label.lowercase()) {
+            "daily" -> cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            "weekdays" -> {
+                do {
+                    cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                } while (cal.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SATURDAY || 
+                         cal.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SUNDAY)
+            }
+            "weekly" -> cal.add(java.util.Calendar.WEEK_OF_YEAR, 1)
+            "biweekly" -> cal.add(java.util.Calendar.WEEK_OF_YEAR, 2)
+            "monthly" -> cal.add(java.util.Calendar.MONTH, 1)
+            else -> cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        return cal.time
+    }
+
+    fun startRide(rideId: String) {
+        ridesFlow.value = ridesFlow.value.map { ride ->
+            if (ride.id == rideId) ride.copy(status = RideStatus.EN_ROUTE) else ride
         }.toMutableList()
     }
 
     fun createBooking(booking: Booking): String {
         val id = booking.id.ifBlank { "mock_booking_${UUID.randomUUID()}" }
-        bookingsFlow.value = (bookingsFlow.value + booking.copy(id = id)).toMutableList()
+        
+        // Upfront payment
+        updateBalance(booking.passengerId, -booking.totalPrice)
+        
+        val finalBooking = booking.copy(
+            id = id,
+            passengerPaid = true,
+            passengerRefunded = false
+        )
+        bookingsFlow.value = (bookingsFlow.value + finalBooking).toMutableList()
         return id
     }
 
-    fun updateBookingStatus(bookingId: String, status: BookingStatus) {
+    fun updateBookingStatus(bookingId: String, status: BookingStatus, currentUid: String? = null) {
         bookingsFlow.value = bookingsFlow.value.map { booking ->
-            if (booking.id == bookingId) booking.copy(status = status) else booking
+            if (booking.id == bookingId) {
+                // State machine validation
+                val current = booking.status
+                val valid = when (status) {
+                    BookingStatus.ACCEPTED -> current == BookingStatus.PENDING
+                    BookingStatus.REJECTED -> current == BookingStatus.PENDING || current == BookingStatus.REJECTED
+                    BookingStatus.EN_ROUTE -> current == BookingStatus.ACCEPTED
+                    BookingStatus.PICKED_UP -> current == BookingStatus.EN_ROUTE
+                    BookingStatus.COMPLETED -> current == BookingStatus.PICKED_UP || current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.COMPLETED
+                    BookingStatus.CANCELLED -> (current != BookingStatus.COMPLETED && current != BookingStatus.REJECTED) || current == BookingStatus.CANCELLED
+                    else -> false
+                }
+                if (!valid) return@map booking
+
+                var updated = booking.copy(status = status)
+                
+                if (status == BookingStatus.ACCEPTED) {
+                    val ride = getRide(booking.rideId)
+                    if (ride != null) {
+                        if (ride.seatsAvailable < booking.seatsRequested) {
+                            return@map booking.copy(status = BookingStatus.REJECTED)
+                        }
+                        decrementSeats(booking.rideId, booking.seatsRequested)
+                    }
+                }
+
+                if (status == BookingStatus.COMPLETED) {
+                    val amount = booking.totalPrice
+                    val uid = currentUid
+                    
+                    if (uid == booking.driverId && !updated.driverPaid) {
+                        updateBalance(booking.driverId, amount)
+                        updated = updated.copy(driverPaid = true)
+                    }
+                    // Passenger already paid upfront
+                } else if ((status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) && 
+                    booking.passengerPaid && !booking.passengerRefunded) {
+                    
+                    val uid = currentUid
+                    // Only the passenger can trigger their own refund
+                    if (uid == booking.passengerId) {
+                        updateBalance(booking.passengerId, booking.totalPrice)
+                        updated = updated.copy(passengerRefunded = true)
+                    }
+                } else if (status == BookingStatus.CANCELLED && (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)) {
+                    // Return seats
+                    incrementSeats(booking.rideId, booking.seatsRequested)
+                }
+                
+                updated
+            } else booking
+        }.toMutableList()
+    }
+
+    private fun decrementSeats(rideId: String, count: Int) {
+        ridesFlow.value = ridesFlow.value.map { ride ->
+            if (ride.id == rideId) {
+                val newSeats = (ride.seatsAvailable - count).coerceAtLeast(0)
+                ride.copy(
+                    seatsAvailable = newSeats,
+                    status = if (newSeats == 0) RideStatus.FULL else RideStatus.OPEN
+                )
+            } else ride
+        }.toMutableList()
+    }
+
+    private fun incrementSeats(rideId: String, count: Int) {
+        ridesFlow.value = ridesFlow.value.map { ride ->
+            if (ride.id == rideId) {
+                val newSeats = (ride.seatsAvailable + count).coerceAtMost(ride.seatsTotal)
+                ride.copy(
+                    seatsAvailable = newSeats,
+                    status = RideStatus.OPEN
+                )
+            } else ride
         }.toMutableList()
     }
 

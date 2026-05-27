@@ -88,6 +88,7 @@ class SharISTApp : Application() {
             override suspend fun createRide(ride: Ride) = delegate.createRide(ride)
             override suspend fun cancelRide(rideId: String) = delegate.cancelRide(rideId)
             override suspend fun completeRide(rideId: String) = delegate.completeRide(rideId)
+            override suspend fun startRide(rideId: String) = delegate.startRide(rideId)
             override suspend fun decrementSeat(rideId: String) = delegate.decrementSeat(rideId)
             override suspend fun createBooking(booking: Booking) = delegate.createBooking(booking)
             override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) = delegate.updateBookingStatus(bookingId, status)
@@ -101,6 +102,7 @@ class SharISTApp : Application() {
             override suspend fun cancelRequest(requestId: String) = delegate.cancelRequest(requestId)
             override suspend fun completeRequest(requestId: String) = delegate.completeRequest(requestId)
             override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) = delegate.updateRequestStatus(requestId, status)
+            override suspend fun denyRequest(requestId: String, driverId: String) = delegate.denyRequest(requestId, driverId)
             override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) =
                 delegate.acceptRequest(requestId, driverId, driverName, driverRating)
 

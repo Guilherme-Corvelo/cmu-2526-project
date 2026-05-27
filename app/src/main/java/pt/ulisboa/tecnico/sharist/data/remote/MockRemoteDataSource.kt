@@ -59,6 +59,10 @@ class MockRemoteDataSource : RemoteDataSource {
         DemoRideStore.completeRide(rideId)
     }
 
+    override suspend fun startRide(rideId: String) {
+        DemoRideStore.startRide(rideId)
+    }
+
     override suspend fun decrementSeat(rideId: String) {
         DemoRideStore.decrementSeat(rideId)
     }
@@ -66,7 +70,7 @@ class MockRemoteDataSource : RemoteDataSource {
     override suspend fun createBooking(booking: Booking): String = DemoRideStore.createBooking(booking)
 
     override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) {
-        DemoRideStore.updateBookingStatus(bookingId, status)
+        DemoRideStore.updateBookingStatus(bookingId, status, currentUid)
     }
 
     override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> =
@@ -90,31 +94,70 @@ class MockRemoteDataSource : RemoteDataSource {
 
     override suspend fun createRequest(request: RideRequest): String {
         val id = request.id.ifBlank { "mock_req_${UUID.randomUUID()}" }
-        DemoRequestStore.requests.value = (listOf(request.copy(id = id)) + DemoRequestStore.requests.value)
+        // Upfront payment for the request
+        DemoRideStore.updateBalance(request.passengerId, -request.estimatedPrice)
+        
+        val finalRequest = request.copy(
+            id = id,
+            passengerPaid = true,
+            passengerRefunded = false
+        )
+        DemoRequestStore.requests.value = (listOf(finalRequest) + DemoRequestStore.requests.value)
         return id
     }
 
     override suspend fun cancelRequest(requestId: String) {
-        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
-            if (it.id == requestId) it.copy(status = RequestStatus.CANCELLED) else it
-        }
+        updateRequestStatus(requestId, RequestStatus.CANCELLED)
     }
 
     override suspend fun completeRequest(requestId: String) {
-        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
-            if (it.id == requestId) it.copy(status = RequestStatus.COMPLETED) else it
-        }
+        updateRequestStatus(requestId, RequestStatus.COMPLETED)
     }
 
     override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) {
-        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
-            if (it.id == requestId) it.copy(status = status) else it
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map { req ->
+            if (req.id == requestId) {
+                if (status == RequestStatus.CANCELLED && currentUid == req.driverId && req.driverId != null) {
+                    // Driver cancels acceptance -> Return to OPEN so other drivers can pick it up
+                    req.copy(
+                        status = RequestStatus.OPEN,
+                        driverId = null,
+                        driverName = null,
+                        driverRating = 5.0
+                    )
+                } else {
+                    var updated = req.copy(status = status)
+                    
+                    if (status == RequestStatus.COMPLETED) {
+                        // Driver gets paid
+                        if (currentUid == updated.driverId && !updated.driverPaid) {
+                            DemoRideStore.updateBalance(updated.driverId!!, updated.estimatedPrice)
+                            updated = updated.copy(driverPaid = true)
+                        }
+                    } else if (status == RequestStatus.CANCELLED && updated.passengerPaid && !updated.passengerRefunded) {
+                        // Passenger gets refund
+                        if (currentUid == updated.passengerId) {
+                            DemoRideStore.updateBalance(updated.passengerId, updated.estimatedPrice)
+                            updated = updated.copy(passengerRefunded = true)
+                        }
+                    }
+                    updated
+                }
+            } else req
+        }
+    }
+
+    override suspend fun denyRequest(requestId: String, driverId: String) {
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map { req ->
+            if (req.id == requestId) {
+                req.copy(deniedBy = req.deniedBy + driverId)
+            } else req
         }
     }
 
     override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
         DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
-            if (it.id == requestId) it.copy(
+            if (it.id == requestId && it.status == RequestStatus.OPEN) it.copy(
                 status = RequestStatus.ACCEPTED,
                 driverId = driverId,
                 driverName = driverName,

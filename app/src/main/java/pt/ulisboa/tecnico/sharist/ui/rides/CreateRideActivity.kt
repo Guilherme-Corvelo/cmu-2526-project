@@ -92,13 +92,24 @@ class CreateRideActivity : AppCompatActivity() {
         }
 
         btnCreate.setOnClickListener {
-            val origin = etOrigin.text.toString()
-            val dest = etDest.text.toString()
+            val origin = etOrigin.text.toString().trim()
+            val dest = etDest.text.toString().trim()
             val seats = etSeats.text.toString().toIntOrNull() ?: 0
             val uid = userRepo.currentUid
 
             if (origin.isBlank() || dest.isBlank() || seats <= 0 || uid == null) {
                 Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (origin.equals(dest, ignoreCase = true)) {
+                Toast.makeText(this, "Origin and Destination cannot be the same", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val now = Calendar.getInstance()
+            if (selectedCalendar.before(now)) {
+                Toast.makeText(this, "Departure time cannot be in the past", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 

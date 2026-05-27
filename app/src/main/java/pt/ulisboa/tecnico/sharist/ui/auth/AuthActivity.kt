@@ -57,6 +57,7 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
                         displayName = name,
                         email = email,
                         driver = isDriver,
+                        balance = 1000.0,
                         vehicleType = if (isDriver) vehicleType else VehicleType.NONE,
                         vehiclePlate = if (isDriver) vehiclePlate else ""
                     )

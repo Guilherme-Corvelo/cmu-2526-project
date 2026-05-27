@@ -97,6 +97,15 @@
             android:layout_marginTop="6dp"/>
 
         <TextView
+            android:id="@+id/tv_estimated_price"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Estimated Price: €0.00"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:layout_marginTop="16dp"/>
+
+        <TextView
             android:id="@+id/tv_selected_time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

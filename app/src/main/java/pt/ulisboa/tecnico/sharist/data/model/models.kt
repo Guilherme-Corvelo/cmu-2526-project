@@ -12,7 +12,7 @@ data class User(
     val displayName: String = "",
     val email: String = "",
     val photoUrl: String? = null,
-    val balance: Double = 0.0,
+    val balance: Double = 1000.0,
     val rating: Double = 5.0,
     val ratingCount: Int = 0,
     val driver: Boolean = false,
@@ -43,6 +43,10 @@ data class RideRequest(
     val status: RequestStatus = RequestStatus.OPEN,
     val passengerReviewed: Boolean = false,
     val driverReviewed: Boolean = false,
+    val passengerPaid: Boolean = false,
+    val driverPaid: Boolean = false,
+    val passengerRefunded: Boolean = false,
+    val deniedBy: List<String> = emptyList(),
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -78,7 +82,7 @@ data class Ride(
     @ServerTimestamp val createdAt: Date? = null
 )
 
-enum class RideStatus { OPEN, FULL, COMPLETED, CANCELLED }
+enum class RideStatus { OPEN, FULL, EN_ROUTE, COMPLETED, CANCELLED }
 
 enum class WeatherType { NONE, RAIN, TOO_HOT, TOO_COLD }
 
@@ -111,8 +115,12 @@ data class Booking(
     val departureTime: Date? = null,
     val driverName: String = "",
     val driverId: String = "",
+    val recurring: Boolean = false,
     val passengerReviewed: Boolean = false,
-    val driverReviewed: Boolean = false
+    val driverReviewed: Boolean = false,
+    val passengerPaid: Boolean = false,
+    val driverPaid: Boolean = false,
+    val passengerRefunded: Boolean = false
 )
 
 enum class BookingStatus { PENDING, ACCEPTED, EN_ROUTE, PICKED_UP, COMPLETED, CANCELLED, REJECTED }

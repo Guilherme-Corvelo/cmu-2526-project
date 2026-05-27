@@ -45,6 +45,7 @@ class RequestRideFragment : Fragment() {
         val session = app.sessionManager
         val etOrigin = view.findViewById<AutoCompleteTextView>(R.id.et_origin)
         val etDestination = view.findViewById<AutoCompleteTextView>(R.id.et_destination)
+        val tvEstimatedPrice = view.findViewById<TextView>(R.id.tv_estimated_price)
         
         val locations = MapDemoData.allPoints().keys.toList()
         val adapter = ArrayAdapter<String>(requireContext(), android.R.layout.simple_dropdown_item_1line, locations)
@@ -93,8 +94,13 @@ class RequestRideFragment : Fragment() {
                 mapView.controller.animateTo(origin)
                 mapView.controller.setZoom(14.0)
                 tvMapStatus.text = "Route preview ready. This request can be matched on the map."
+                
+                val price = PriceCalculator.estimate(etOrigin.text.toString().trim(), etDestination.text.toString().trim())
+                tvEstimatedPrice.text = "Estimated Price: €${String.format("%.2f", price)}"
+                tvEstimatedPrice.visibility = View.VISIBLE
             } else {
                 tvMapStatus.text = "Route preview needs known demo From/To names (IST Alameda, Saldanha, Campo Grande, Oriente)."
+                tvEstimatedPrice.visibility = View.GONE
             }
             mapView.invalidate()
         }
