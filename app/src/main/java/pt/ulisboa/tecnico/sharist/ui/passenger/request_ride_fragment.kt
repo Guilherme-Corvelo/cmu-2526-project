@@ -150,6 +150,11 @@ class RequestRideFragment : Fragment() {
                 return@setOnClickListener
             }
 
+            if (origin.equals(destination, ignoreCase = true)) {
+                Toast.makeText(requireContext(), "Origin and Destination cannot be the same", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
             val estimatedPrice = PriceCalculator.estimate(origin, destination)
 
             val request = RideRequest(

@@ -80,6 +80,9 @@ class RideRepository(
     }
 
     suspend fun createRide(ride: Ride): Result<String> {
+        if (ride.origin.equals(ride.destination, ignoreCase = true)) {
+            return Result.failure(IllegalArgumentException("Origin and Destination cannot be the same"))
+        }
         if (!network.isConnected) {
             val id = local.pendingDao.insert(PendingOperation(type = "CREATE_RIDE", payload = gson.toJson(ride)))
             return Result.success("pending_$id")
@@ -220,6 +223,7 @@ class RideRepository(
                 when (op.type) {
                     "CREATE_RIDE" -> remote.createRide(gson.fromJson(op.payload, Ride::class.java))
                     "CREATE_BOOKING" -> remote.createBooking(gson.fromJson(op.payload, Booking::class.java))
+                    "CREATE_REQUEST" -> remote.createRequest(gson.fromJson(op.payload, RideRequest::class.java))
                 }
                 op.synced = true
                 local.pendingDao.update(op)
@@ -292,8 +296,17 @@ class RideRequestRepository(
         }
     }
 
-    suspend fun createRequest(request: RideRequest): Result<String> = runCatching {
-        remote.createRequest(request)
+    suspend fun createRequest(request: RideRequest): Result<String> {
+        if (request.origin.equals(request.destination, ignoreCase = true)) {
+            return Result.failure(IllegalArgumentException("Origin and Destination cannot be the same"))
+        }
+        if (!network.isConnected) {
+            val id = local.pendingDao.insert(PendingOperation(type = "CREATE_REQUEST", payload = gson.toJson(request)))
+            return Result.success("pending_$id")
+        }
+        return runCatching {
+            remote.createRequest(request)
+        }
     }
 
     suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double): Result<Unit> = runCatching {

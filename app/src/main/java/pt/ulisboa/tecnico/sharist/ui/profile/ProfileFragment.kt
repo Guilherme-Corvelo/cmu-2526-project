@@ -131,7 +131,7 @@ class ProfileFragment : Fragment() {
                         tvRatingSummary.text = "Rating: %.1f (%d ratings)".format(avg, count)
                         tvHistogram.text = buildHistogramFromReviews(reviews)
 
-                        tvComments.text = reviews.joinToString("\n") {
+                        tvComments.text = reviews.take(7).joinToString("\n") {
                             val stars = "★".repeat(it.rating) + "☆".repeat(5 - it.rating)
                             "• $stars${if (it.comment.isNotBlank()) ": ${it.comment}" else ""}"
                         }
