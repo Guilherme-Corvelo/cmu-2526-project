@@ -60,6 +60,16 @@ class MyRequestsFragment : Fragment() {
                     }
                 }
             },
+            onRejectDriver = { item ->
+                if (item is RideRequest) {
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        item.driverId?.let { driverId ->
+                            requestRepo.rejectDriver(item.id, driverId)
+                            Toast.makeText(requireContext(), "Driver rejected. Searching again...", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            },
             onRate = { item ->
                 val (name, targetId, id) = if (item is RideRequest) {
                     Triple(item.driverName ?: "Driver", item.driverId ?: "", item.id)
@@ -123,6 +133,7 @@ class MyRequestsFragment : Fragment() {
 
 class MyRequestAdapter(
     private val onCancel: (Any) -> Unit = {},
+    private val onRejectDriver: (Any) -> Unit = {},
     private val onRate: (Any) -> Unit = {}
 ) : ListAdapter<Any, MyRequestAdapter.VH>(DIFF) {
     private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
@@ -146,7 +157,10 @@ class MyRequestAdapter(
             h.tvDriver.text = item.driverName?.let { "Driver: $it" } ?: "Searching for driver..."
             h.tvStatus.text = "Request: ${item.status}"
             
-            h.btnAction.visibility = View.GONE
+            h.btnAction.visibility = if (item.status == RequestStatus.ACCEPTED) View.VISIBLE else View.GONE
+            h.btnAction.text = "Reject Driver"
+            h.btnAction.setOnClickListener { onRejectDriver(item) }
+
             h.btnCancel.visibility = if (item.status == RequestStatus.OPEN || item.status == RequestStatus.ACCEPTED) View.VISIBLE else View.GONE
             h.btnCancel.setOnClickListener { onCancel(item) }
             

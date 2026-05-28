@@ -40,6 +40,7 @@ interface RemoteDataSource {
     suspend fun completeRequest(requestId: String)
     suspend fun updateRequestStatus(requestId: String, status: RequestStatus)
     suspend fun denyRequest(requestId: String, driverId: String)
+    suspend fun rejectDriver(requestId: String, driverId: String)
     suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double)
     fun clearListeners()
 }

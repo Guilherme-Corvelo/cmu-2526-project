@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.DocumentReference
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -111,14 +112,24 @@ class FirebaseDataSource(
     }
 
     override suspend fun completeRide(rideId: String) {
+        val uid = currentUid ?: return
         val bookings = bookingsCol.whereEqualTo("rideId", rideId).get().await()
 
         db.runTransaction { tx ->
+            // 1. ALL READS
             val rideRef = ridesCol.document(rideId)
             val ride = tx.get(rideRef).toObject(Ride::class.java)
                 ?: return@runTransaction
+            
+            if (ride.driverId != uid) return@runTransaction
 
+            val dRef = usersCol.document(uid)
+            val currentBal = tx.get(dRef).getDouble("balance") ?: 0.0
+
+            // 2. ALL WRITES
             tx.update(rideRef, "status", RideStatus.COMPLETED.name)
+
+            var totalEarnings = 0.0
 
             // If it's a periodic ride, we create the NEXT occurrence automatically
             if (ride.periodic) {
@@ -128,6 +139,7 @@ class FirebaseDataSource(
                 // Process bookings to handle completion and recurring carry-over
                 for (doc in bookings.documents) {
                     val booking = doc.toObject(Booking::class.java) ?: continue
+                    if (booking.driverId != uid) continue
                     
                     val isActive = booking.status == BookingStatus.ACCEPTED || 
                                    booking.status == BookingStatus.PICKED_UP || 
@@ -135,53 +147,77 @@ class FirebaseDataSource(
                     
                     if (isActive) {
                         tx.update(doc.reference, "status", BookingStatus.COMPLETED.name)
+                        if (!booking.driverPaid) {
+                            totalEarnings += booking.totalPrice
+                            tx.update(doc.reference, "driverPaid", true)
+                        }
                     } else if (booking.status == BookingStatus.PENDING) {
                         tx.update(doc.reference, "status", BookingStatus.REJECTED.name)
                     }
 
-                    // Carry over recurring bookings (even if already completed individually)
-                    // They start as PENDING in the next ride instance.
+                    // Carry over recurring bookings
                     if (booking.recurring && (isActive || booking.status == BookingStatus.COMPLETED)) {
+                        val nextBookingRef = bookingsCol.document()
                         val nextBooking = booking.copy(
-                            id = "",
+                            id = nextBookingRef.id,
                             rideId = nextRideRef.id,
                             status = BookingStatus.PENDING, 
                             departureTime = nextDate,
                             createdAt = null,
                             passengerReviewed = false,
-                            driverReviewed = false
+                            driverReviewed = false,
+                            driverPaid = false,
+                            passengerRefunded = false
                         )
-                        val nextBookingRef = bookingsCol.document()
-                        tx.set(nextBookingRef, nextBooking.copy(id = nextBookingRef.id))
+                        tx.set(nextBookingRef, nextBooking)
                     }
                 }
 
-                // Next ride starts with fresh capacity. 
-                // Recurring bookings are PENDING, so they don't subtract seats yet.
                 val nextRide = ride.copy(
                     id = nextRideRef.id,
                     status = RideStatus.OPEN,
                     departureTime = nextDate,
-                    seatsAvailable = ride.seatsTotal, // USE seatsTotal to reset capacity
+                    seatsAvailable = ride.seatsTotal,
                     createdAt = null
                 )
                 tx.set(nextRideRef, nextRide)
             } else {
-                // Not periodic, just mass complete bookings
                 for (doc in bookings.documents) {
                     val booking = doc.toObject(Booking::class.java) ?: continue
+                    if (booking.driverId != uid) continue
                     if (booking.status == BookingStatus.ACCEPTED || booking.status == BookingStatus.PICKED_UP || booking.status == BookingStatus.EN_ROUTE) {
                         tx.update(doc.reference, "status", BookingStatus.COMPLETED.name)
+                        if (!booking.driverPaid) {
+                            totalEarnings += booking.totalPrice
+                            tx.update(doc.reference, "driverPaid", true)
+                        }
                     } else if (booking.status == BookingStatus.PENDING) {
                         tx.update(doc.reference, "status", BookingStatus.REJECTED.name)
                     }
                 }
             }
+
+            if (totalEarnings > 0) {
+                tx.update(dRef, "balance", currentBal + totalEarnings)
+            }
         }.await()
     }
 
     override suspend fun startRide(rideId: String) {
-        ridesCol.document(rideId).update("status", RideStatus.EN_ROUTE.name).await()
+        val uid = currentUid ?: return
+        val bookings = bookingsCol.whereEqualTo("rideId", rideId).get().await()
+        db.runTransaction { tx ->
+            val rideRef = ridesCol.document(rideId)
+            val rideSnap = tx.get(rideRef)
+            if (rideSnap.exists() && rideSnap.getString("driverId") == uid) {
+                tx.update(rideRef, "status", RideStatus.EN_ROUTE.name)
+                for (doc in bookings.documents) {
+                    if (doc.getString("driverId") == uid && doc.getString("status") == BookingStatus.ACCEPTED.name) {
+                        tx.update(doc.reference, "status", BookingStatus.EN_ROUTE.name)
+                    }
+                }
+            }
+        }.await()
     }
 
     private fun calculateNextOccurrence(currentDate: Date?, label: String): Date {
@@ -490,6 +526,24 @@ class FirebaseDataSource(
         }.await()
     }
 
+    override suspend fun rejectDriver(requestId: String, driverId: String) {
+        db.runTransaction { tx ->
+            val ref = requestsCol.document(requestId)
+            val req = tx.get(ref).toObject(RideRequest::class.java) ?: return@runTransaction
+            
+            val currentDeniedDrivers = req.deniedDrivers.toMutableList()
+            if (!currentDeniedDrivers.contains(driverId)) {
+                currentDeniedDrivers.add(driverId)
+            }
+            
+            tx.update(ref, "status", RequestStatus.OPEN.name)
+            tx.update(ref, "driverId", null)
+            tx.update(ref, "driverName", null)
+            tx.update(ref, "driverRating", 5.0)
+            tx.update(ref, "deniedDrivers", currentDeniedDrivers)
+        }.await()
+    }
+
     override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
         db.runTransaction { tx ->
             val ref = requestsCol.document(requestId)
@@ -504,37 +558,35 @@ class FirebaseDataSource(
         val uid = currentUid ?: return
 
         db.runTransaction { tx ->
-            val reviewRef = reviewsCol.document()
-            tx.set(reviewRef, review.copy(id = reviewRef.id))
-        }.await()
-
-        // Update the correct flag (driverReviewed or passengerReviewed) on the parent document
-        try {
+            // 1. ALL READS
             val reqRef = requestsCol.document(review.requestId)
-            val reqSnap = reqRef.get().await()
+            val reqSnap = tx.get(reqRef)
+            
+            var fieldToUpdate: String? = null
+            var docToUpdate: DocumentReference? = null
+            
             if (reqSnap.exists()) {
                 val driverId = reqSnap.getString("driverId")
-                // If reviewer is driver, set passengerReviewed = true. Else set driverReviewed = true.
-                val field = if (uid == driverId) "passengerReviewed" else "driverReviewed"
-                reqRef.update(field, true).await()
-                return
+                fieldToUpdate = if (uid == driverId) "passengerReviewed" else "driverReviewed"
+                docToUpdate = reqRef
+            } else {
+                val bookRef = bookingsCol.document(review.requestId)
+                val bookSnap = tx.get(bookRef)
+                if (bookSnap.exists()) {
+                    val driverId = bookSnap.getString("driverId")
+                    fieldToUpdate = if (uid == driverId) "passengerReviewed" else "driverReviewed"
+                    docToUpdate = bookRef
+                }
             }
-        } catch (e: Exception) {
-            android.util.Log.d("FirebaseDataSource", "Request update failed: ${e.message}")
-        }
-        
-        try {
-            val bookRef = bookingsCol.document(review.requestId)
-            val bookSnap = bookRef.get().await()
-            if (bookSnap.exists()) {
-                val driverId = bookSnap.getString("driverId")
-                // If reviewer is driver, set passengerReviewed = true. Else set driverReviewed = true.
-                val field = if (uid == driverId) "passengerReviewed" else "driverReviewed"
-                bookRef.update(field, true).await()
+
+            // 2. ALL WRITES
+            val reviewRef = reviewsCol.document()
+            tx.set(reviewRef, review.copy(id = reviewRef.id))
+            
+            if (docToUpdate != null && fieldToUpdate != null) {
+                tx.update(docToUpdate, fieldToUpdate, true)
             }
-        } catch (e: Exception) {
-            android.util.Log.d("FirebaseDataSource", "Booking update failed: ${e.message}")
-        }
+        }.await()
     }
 
     override fun observeReviewsForUser(userId: String): Flow<List<Review>> = callbackFlow {

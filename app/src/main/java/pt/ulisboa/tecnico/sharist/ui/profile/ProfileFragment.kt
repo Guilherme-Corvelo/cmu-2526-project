@@ -44,10 +44,18 @@ class ProfileFragment : Fragment() {
         val tvVehicles = view.findViewById<TextView>(R.id.tv_vehicles)
         val tvComments = view.findViewById<TextView>(R.id.tv_comments)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
+        val btnBack = view.findViewById<android.widget.ImageButton>(R.id.btn_back)
+
+        btnBack.setOnClickListener {
+            requireActivity().onBackPressedDispatcher.onBackPressed()
+        }
 
         val session = (requireActivity().application as SharISTApp).sessionManager
-        val uid = userRepo.currentUid
-        if (session.forceDemoMode) {
+        val currentUid = userRepo.currentUid
+        val targetUid = arguments?.getString("userId") ?: currentUid
+        val isOwnProfile = targetUid == currentUid
+
+        if (session.forceDemoMode && isOwnProfile) {
             val demoUser = if (session.role == SessionManager.ROLE_DRIVER) {
                 User(DemoRequestStore.DEMO_DRIVER_ID, DemoRequestStore.DEMO_DRIVER_NAME, "demo_driver@demo.app", driver = true, rating = 4.8, ratingCount = 36, vehicleType = VehicleType.SEDAN, vehiclePlate = "DEMO-01")
             } else {
@@ -55,9 +63,9 @@ class ProfileFragment : Fragment() {
             }
             bindProfile(demoUser, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
             observeReviews(demoUser.uid, tvComments, tvRatingSummary, tvHistogram)
-        } else if (uid != null) {
+        } else if (targetUid != null) {
             viewLifecycleOwner.lifecycleScope.launch {
-                val user = userRepo.getUser(uid)
+                val user = userRepo.getUser(targetUid)
                 if (user != null) {
                     bindProfile(user, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
                     observeReviews(user.uid, tvComments, tvRatingSummary, tvHistogram)
@@ -68,6 +76,7 @@ class ProfileFragment : Fragment() {
             }
         }
 
+        btnLogout.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
         btnLogout.setOnClickListener {
             (requireActivity().application as SharISTApp).remoteDataSource.clearListeners()
             userRepo.signOut()

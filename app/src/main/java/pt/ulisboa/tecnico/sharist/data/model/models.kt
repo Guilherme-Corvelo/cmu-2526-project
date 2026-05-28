@@ -46,7 +46,8 @@ data class RideRequest(
     val passengerPaid: Boolean = false,
     val driverPaid: Boolean = false,
     val passengerRefunded: Boolean = false,
-    val deniedBy: List<String> = emptyList(),
+    val deniedBy: List<String> = emptyList(), // Drivers who ignored this request
+    val deniedDrivers: List<String> = emptyList(), // Drivers rejected by the passenger
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -202,6 +203,49 @@ fun RideRequestEntity.toDomain() = RideRequest(
     status = RequestStatus.valueOf(status),
     passengerReviewed = passengerReviewed,
     driverReviewed = driverReviewed
+)
+
+@Entity(tableName = "bookings_cache")
+data class BookingEntity(
+    @PrimaryKey val id: String,
+    val rideId: String,
+    val passengerId: String,
+    val passengerName: String,
+    val passengerRating: Double,
+    val passengerPhotoUrl: String?,
+    val seatsRequested: Int,
+    val totalPrice: Double,
+    val status: String,
+    val createdAtMs: Long,
+    val origin: String,
+    val destination: String,
+    val departureTimeMs: Long,
+    val driverName: String,
+    val driverId: String,
+    val recurring: Boolean,
+    val passengerReviewed: Boolean,
+    val driverReviewed: Boolean,
+    val passengerPaid: Boolean,
+    val driverPaid: Boolean,
+    val passengerRefunded: Boolean,
+    val cachedAtMs: Long = System.currentTimeMillis()
+)
+
+fun Booking.toEntity() = BookingEntity(
+    id, rideId, passengerId, passengerName, passengerRating, passengerPhotoUrl,
+    seatsRequested, totalPrice, status.name, createdAt?.time ?: 0L,
+    origin, destination, departureTime?.time ?: 0L, driverName, driverId,
+    recurring, passengerReviewed, driverReviewed, passengerPaid, driverPaid, passengerRefunded
+)
+
+fun BookingEntity.toDomain() = Booking(
+    id = id, rideId = rideId, passengerId = passengerId, passengerName = passengerName,
+    passengerRating = passengerRating, passengerPhotoUrl = passengerPhotoUrl,
+    seatsRequested = seatsRequested, totalPrice = totalPrice, status = BookingStatus.valueOf(status),
+    createdAt = Date(createdAtMs), origin = origin, destination = destination,
+    departureTime = Date(departureTimeMs), driverName = driverName, driverId = driverId,
+    recurring = recurring, passengerReviewed = passengerReviewed, driverReviewed = driverReviewed,
+    passengerPaid = passengerPaid, driverPaid = driverPaid, passengerRefunded = passengerRefunded
 )
 
 @Entity(tableName = "pending_operations")

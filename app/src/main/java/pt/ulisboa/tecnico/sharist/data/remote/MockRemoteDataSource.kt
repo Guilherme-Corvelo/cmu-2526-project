@@ -155,6 +155,20 @@ class MockRemoteDataSource : RemoteDataSource {
         }
     }
 
+    override suspend fun rejectDriver(requestId: String, driverId: String) {
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map { req ->
+            if (req.id == requestId) {
+                req.copy(
+                    status = RequestStatus.OPEN,
+                    driverId = null,
+                    driverName = null,
+                    driverRating = 5.0,
+                    deniedDrivers = req.deniedDrivers + driverId
+                )
+            } else req
+        }
+    }
+
     override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
         DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
             if (it.id == requestId && it.status == RequestStatus.OPEN) it.copy(

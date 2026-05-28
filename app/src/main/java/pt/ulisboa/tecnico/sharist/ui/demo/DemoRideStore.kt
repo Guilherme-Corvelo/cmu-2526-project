@@ -280,6 +280,12 @@ object DemoRideStore {
         ridesFlow.value = ridesFlow.value.map { ride ->
             if (ride.id == rideId) ride.copy(status = RideStatus.EN_ROUTE) else ride
         }.toMutableList()
+
+        bookingsFlow.value = bookingsFlow.value.map { booking ->
+            if (booking.rideId == rideId && booking.status == BookingStatus.ACCEPTED) {
+                booking.copy(status = BookingStatus.EN_ROUTE)
+            } else booking
+        }.toMutableList()
     }
 
     fun createBooking(booking: Booking): String {

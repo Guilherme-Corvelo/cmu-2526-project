@@ -103,6 +103,7 @@ class SharISTApp : Application() {
             override suspend fun completeRequest(requestId: String) = delegate.completeRequest(requestId)
             override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) = delegate.updateRequestStatus(requestId, status)
             override suspend fun denyRequest(requestId: String, driverId: String) = delegate.denyRequest(requestId, driverId)
+            override suspend fun rejectDriver(requestId: String, driverId: String) = delegate.rejectDriver(requestId, driverId)
             override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) =
                 delegate.acceptRequest(requestId, driverId, driverName, driverRating)
 

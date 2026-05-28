@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -17,6 +18,7 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import androidx.navigation.fragment.NavHostFragment
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.RequestStatus
@@ -30,6 +32,11 @@ import pt.ulisboa.tecnico.sharist.ui.passenger.RateDriverDialog
 import pt.ulisboa.tecnico.sharist.ui.rides.CreateRideActivity
 import pt.ulisboa.tecnico.sharist.ui.driver.DriverPostedRidesActivity
 import kotlinx.coroutines.flow.*
+
+data class RideJourney(
+    val ride: Ride,
+    val bookings: List<Booking>
+)
 
 class MyActiveRidesFragment : Fragment() {
     private lateinit var requestRepo: RideRequestRepository
@@ -66,21 +73,58 @@ class MyActiveRidesFragment : Fragment() {
             onUpdateStatus = { item, newStatus ->
                 viewLifecycleOwner.lifecycleScope.launch {
                     try {
-                        if (item is RideRequest && newStatus is RequestStatus) {
-                            requestRepo.updateRequestStatus(item.id, newStatus)
-                        } else if (item is Booking && newStatus is BookingStatus) {
-                            rideRepo.updateBookingStatus(item.id, newStatus)
+                        when {
+                            item is RideRequest && newStatus is RequestStatus -> {
+                                requestRepo.updateRequestStatus(item.id, newStatus)
+                                Toast.makeText(requireContext(), "Status updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                            }
+                            item is Booking && newStatus is BookingStatus -> {
+                                rideRepo.updateBookingStatus(item.id, newStatus)
+                                Toast.makeText(requireContext(), "Booking updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                            }
+                            item is RideJourney && newStatus is RideStatus -> {
+                                val res = when (newStatus) {
+                                    RideStatus.EN_ROUTE -> rideRepo.startRide(item.ride.id)
+                                    RideStatus.COMPLETED -> rideRepo.completeRide(item.ride.id)
+                                    RideStatus.CANCELLED -> rideRepo.cancelRide(item.ride.id)
+                                    else -> Result.success(Unit)
+                                }
+                                if (res.isSuccess) {
+                                    Toast.makeText(requireContext(), "Journey ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(requireContext(), "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            // Consolidated pickup for all bookings in a journey
+                            item is RideJourney && newStatus is BookingStatus && newStatus == BookingStatus.PICKED_UP -> {
+                                var count = 0
+                                item.bookings.forEach { b ->
+                                    if (b.status == BookingStatus.EN_ROUTE) {
+                                        rideRepo.updateBookingStatus(b.id, BookingStatus.PICKED_UP)
+                                        count++
+                                    }
+                                }
+                                Toast.makeText(requireContext(), "Confirmed pickup for $count passengers", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("MyActiveRides", "Status update failed", e)
+                        Toast.makeText(requireContext(), "Update failed: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
             },
             onRideCompleted = { item ->
-                val passengerName = if (item is RideRequest) item.passengerName else (item as Booking).passengerName
-                val passengerId = if (item is RideRequest) item.passengerId else (item as Booking).passengerId
-                val id = if (item is RideRequest) item.id else (item as Booking).id
-
+                val (passengerName, passengerId, id) = when (item) {
+                    is RideRequest -> Triple(item.passengerName, item.passengerId, item.id)
+                    is Booking -> Triple(item.passengerName, item.passengerId, item.id)
+                    is RideJourney -> {
+                        val toRate = item.bookings.firstOrNull { !it.passengerReviewed }
+                        if (toRate != null) {
+                            Triple(toRate.passengerName, toRate.passengerId, toRate.id)
+                        } else return@ActiveRideAdapter
+                    }
+                    else -> return@ActiveRideAdapter
+                }
                 RateDriverDialog(
                     targetName = passengerName,
                     titleOverride = "Rate your passenger $passengerName"
@@ -103,6 +147,14 @@ class MyActiveRidesFragment : Fragment() {
                         }
                     }
                 }.show(childFragmentManager, "rate_passenger")
+            },
+            onViewProfile = { userId ->
+                val bundle = Bundle().apply { putString("userId", userId) }
+                try {
+                    NavHostFragment.findNavController(this@MyActiveRidesFragment).navigate(R.id.profileFragment, bundle)
+                } catch (e: Exception) {
+                    android.util.Log.e("MyActiveRides", "Navigation failed", e)
+                }
             }
         )
         recycler.layoutManager = LinearLayoutManager(requireContext())
@@ -115,13 +167,31 @@ class MyActiveRidesFragment : Fragment() {
             
             kotlinx.coroutines.flow.combine(
                 requestRepo.getDriverRequests(uid).catch { emit(emptyList()) },
-                rideRepo.getDriverBookings(uid).catch { emit(emptyList()) }
-            ) { requests, bookings ->
+                rideRepo.getDriverBookings(uid).catch { emit(emptyList()) },
+                rideRepo.getDriverRides(uid).catch { emit(emptyList()) }
+            ) { requests, bookings, rides ->
                 val filteredRequests = requests.filter { it.status in activeStatuses && !it.passengerReviewed }
-                val filteredBookings = bookings.filter { it.status in activeBookingStatuses && !it.passengerReviewed }
-                (filteredRequests + filteredBookings).sortedByDescending {
+                
+                val journeys = mutableListOf<Any>()
+                journeys.addAll(filteredRequests)
+                
+                val bookingsByRide = bookings.groupBy { it.rideId }
+                rides.forEach { ride ->
+                    val rideBookings = bookingsByRide[ride.id] ?: emptyList()
+                    val activeRideBookings = rideBookings.filter { it.status in activeBookingStatuses && !it.passengerReviewed }
+                    
+                    // Show ride if it's active (OPEN/FULL/EN_ROUTE) even if no bookings yet,
+                    // or if it's completed but has pending reviews.
+                    if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL || ride.status == RideStatus.EN_ROUTE ||
+                        (ride.status == RideStatus.COMPLETED && activeRideBookings.isNotEmpty())) {
+                        journeys.add(RideJourney(ride, activeRideBookings))
+                    }
+                }
+
+                journeys.sortedByDescending {
                     when (it) {
                         is RideRequest -> it.createdAt?.time ?: 0L
+                        is RideJourney -> it.ride.createdAt?.time ?: 0L
                         is Booking -> it.createdAt?.time ?: 0L
                         else -> 0L
                     }
@@ -132,8 +202,13 @@ class MyActiveRidesFragment : Fragment() {
             }.collect {
                 adapter.submitList(it)
                 renderAcceptedRoute(it.firstOrNull { item ->
-                    val status = if (item is RideRequest) item.status else (item as Booking).status
-                    status != RequestStatus.COMPLETED && status != BookingStatus.COMPLETED
+                    val status = when(item) {
+                        is RideRequest -> item.status.name
+                        is RideJourney -> item.ride.status.name
+                        is Booking -> item.status.name
+                        else -> ""
+                    }
+                    status != "COMPLETED" && status != "CANCELLED"
                 })
                 tvEmpty.text = "No active trip. Create a shared ride above or accept bookings from your rides."
                 tvEmpty.visibility = if (it.isEmpty()) View.VISIBLE else View.GONE
@@ -150,8 +225,12 @@ class MyActiveRidesFragment : Fragment() {
             return
         }
 
-        val originStr = if (item is RideRequest) item.origin else (item as Booking).origin
-        val destStr = if (item is RideRequest) item.destination else (item as Booking).destination
+        val (originStr, destStr) = when(item) {
+            is RideRequest -> item.origin to item.destination
+            is RideJourney -> item.ride.origin to item.ride.destination
+            is Booking -> item.origin to item.destination
+            else -> "" to ""
+        }
 
         val origin = MapDemoData.pointFor(originStr)
         val destination = MapDemoData.pointFor(destStr)
@@ -187,7 +266,8 @@ class MyActiveRidesFragment : Fragment() {
 
 class ActiveRideAdapter(
     private val onUpdateStatus: (Any, Any) -> Unit,
-    private val onRideCompleted: (Any) -> Unit
+    private val onRideCompleted: (Any) -> Unit,
+    private val onViewProfile: (String) -> Unit
 ) : androidx.recyclerview.widget.ListAdapter<Any, ActiveRideAdapter.VH>(DIFF) {
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
@@ -195,6 +275,10 @@ class ActiveRideAdapter(
         val btnAction: android.widget.Button = v.findViewById(R.id.btn_action)
         val btnCancel: android.widget.Button = v.findViewById(R.id.btn_cancel)
         val btnRate: android.widget.Button = v.findViewById(R.id.btn_rate)
+        
+        init {
+            tvRoute.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -204,19 +288,75 @@ class ActiveRideAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
         
-        val passengerName = if (item is RideRequest) item.passengerName else (item as Booking).passengerName
-        val origin = if (item is RideRequest) item.origin else (item as Booking).origin
-        val destination = if (item is RideRequest) item.destination else (item as Booking).destination
-        val status = if (item is RideRequest) item.status.name else (item as Booking).status.name
+        val origin = when(item) {
+            is RideRequest -> item.origin
+            is Booking -> item.origin
+            is RideJourney -> item.ride.origin
+            else -> ""
+        }
+        val destination = when(item) {
+            is RideRequest -> item.destination
+            is Booking -> item.destination
+            is RideJourney -> item.ride.destination
+            else -> ""
+        }
+        val status = when(item) {
+            is RideRequest -> item.status.name
+            is Booking -> item.status.name
+            is RideJourney -> item.ride.status.name
+            else -> ""
+        }
         val isRecurring = if (item is Booking) item.recurring else false
 
-        holder.tvRoute.text = if (isRecurring) "⟳ $passengerName: $origin → $destination" else "$passengerName: $origin → $destination"
+        val sb = android.text.SpannableStringBuilder()
+        if (isRecurring) sb.append("⟳ ")
+
+        when (item) {
+            is RideRequest -> {
+                val start = sb.length
+                sb.append(item.passengerName)
+                sb.setSpan(object : android.text.style.ClickableSpan() {
+                    override fun onClick(v: View) { onViewProfile(item.passengerId) }
+                }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            is Booking -> {
+                val start = sb.length
+                sb.append(item.passengerName)
+                sb.setSpan(object : android.text.style.ClickableSpan() {
+                    override fun onClick(v: View) { onViewProfile(item.passengerId) }
+                }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            is RideJourney -> {
+                if (item.bookings.isEmpty()) {
+                    sb.append("No passengers yet")
+                } else {
+                    item.bookings.forEachIndexed { index, booking ->
+                        val start = sb.length
+                        sb.append(booking.passengerName)
+                        sb.setSpan(object : android.text.style.ClickableSpan() {
+                            override fun onClick(v: View) { onViewProfile(booking.passengerId) }
+                        }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        if (index < item.bookings.size - 1) sb.append(", ")
+                    }
+                }
+            }
+        }
+        sb.append(": $origin → $destination")
+        holder.tvRoute.text = sb
 
         val (statusText, btnText, nextStatus) = when {
             item is RideRequest && item.status == RequestStatus.ACCEPTED -> Triple("Accepted - Get moving!", "Start Trip", RequestStatus.EN_ROUTE)
             item is RideRequest && item.status == RequestStatus.EN_ROUTE -> Triple("En route to pickup", "Confirm Pickup", RequestStatus.PICKED_UP)
             item is RideRequest && item.status == RequestStatus.PICKED_UP -> Triple("Passenger onboard", "Finish Ride", RequestStatus.COMPLETED)
             item is RideRequest && item.status == RequestStatus.COMPLETED -> Triple("Ride Completed", "", RequestStatus.COMPLETED)
+
+            item is RideJourney && (item.ride.status == RideStatus.OPEN || item.ride.status == RideStatus.FULL) -> Triple("Journey Ready", "Start Journey", RideStatus.EN_ROUTE)
+            item is RideJourney && item.ride.status == RideStatus.EN_ROUTE -> {
+                val allPickedUp = item.bookings.isNotEmpty() && item.bookings.all { it.status == BookingStatus.PICKED_UP }
+                if (allPickedUp) Triple("All passengers onboard", "Finish Journey", RideStatus.COMPLETED)
+                else Triple("Journey in progress", "Confirm All Pickups", BookingStatus.PICKED_UP)
+            }
+            item is RideJourney && item.ride.status == RideStatus.COMPLETED -> Triple("Journey Completed", "", RideStatus.COMPLETED)
 
             item is Booking && item.status == BookingStatus.ACCEPTED -> Triple("Booking Accepted", "Start Trip", BookingStatus.EN_ROUTE)
             item is Booking && item.status == BookingStatus.EN_ROUTE -> Triple("En route to pickup", "Confirm Pickup", BookingStatus.PICKED_UP)
@@ -227,7 +367,8 @@ class ActiveRideAdapter(
         }
 
         val isCompleted = (item is RideRequest && item.status == RequestStatus.COMPLETED) || 
-                          (item is Booking && item.status == BookingStatus.COMPLETED)
+                          (item is Booking && item.status == BookingStatus.COMPLETED) ||
+                          (item is RideJourney && item.ride.status == RideStatus.COMPLETED)
         
         holder.tvDriver.text = statusText
         holder.btnAction.visibility = if (btnText.isNotEmpty()) View.VISIBLE else View.GONE
@@ -239,28 +380,48 @@ class ActiveRideAdapter(
         holder.btnCancel.visibility = if (isCompleted) View.GONE else View.VISIBLE
         holder.btnCancel.text = "Cancel"
         holder.btnCancel.setOnClickListener {
-            // New logic to allow driver to cancel individual booking/request
-            if (item is RideRequest) {
-                onUpdateStatus(item, RequestStatus.CANCELLED)
-            } else if (item is Booking) {
-                onUpdateStatus(item, BookingStatus.CANCELLED)
+            when (item) {
+                is RideRequest -> onUpdateStatus(item, RequestStatus.CANCELLED)
+                is Booking -> onUpdateStatus(item, BookingStatus.CANCELLED)
+                is RideJourney -> onUpdateStatus(item, RideStatus.CANCELLED)
             }
         }
         
-        val isReviewed = if (item is RideRequest) item.passengerReviewed else (item as Booking).passengerReviewed
+        val isReviewed = when(item) {
+            is RideRequest -> item.passengerReviewed
+            is Booking -> item.passengerReviewed
+            is RideJourney -> item.bookings.all { it.passengerReviewed }
+            else -> true
+        }
 
         holder.btnRate.visibility = if (isCompleted && !isReviewed) View.VISIBLE else View.GONE
+        if (item is RideJourney && isCompleted && !isReviewed) {
+            val count = item.bookings.count { !it.passengerReviewed }
+            holder.btnRate.text = if (count > 1) "Rate Passengers ($count)" else "Rate Passenger"
+        } else if (isCompleted) {
+            holder.btnRate.text = "Rate Passenger"
+        }
         holder.btnRate.setOnClickListener { onRideCompleted(item) }
     }
 
     companion object {
         private val DIFF = object : androidx.recyclerview.widget.DiffUtil.ItemCallback<Any>() {
             override fun areItemsTheSame(oldItem: Any, newItem: Any): Boolean {
-                return if (oldItem is RideRequest && newItem is RideRequest) oldItem.id == newItem.id
-                else if (oldItem is Booking && newItem is Booking) oldItem.id == newItem.id
-                else false
+                return when {
+                    oldItem is RideRequest && newItem is RideRequest -> oldItem.id == newItem.id
+                    oldItem is Booking && newItem is Booking -> oldItem.id == newItem.id
+                    oldItem is RideJourney && newItem is RideJourney -> oldItem.ride.id == newItem.ride.id
+                    else -> false
+                }
             }
-            override fun areContentsTheSame(oldItem: Any, newItem: Any) = oldItem == newItem
+            override fun areContentsTheSame(oldItem: Any, newItem: Any): Boolean {
+                return when {
+                    oldItem is RideRequest && newItem is RideRequest -> oldItem == newItem
+                    oldItem is Booking && newItem is Booking -> oldItem == newItem
+                    oldItem is RideJourney && newItem is RideJourney -> oldItem == newItem
+                    else -> false
+                }
+            }
         }
     }
 }

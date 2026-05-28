@@ -3,6 +3,7 @@ package pt.ulisboa.tecnico.sharist.data.local
 import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import pt.ulisboa.tecnico.sharist.data.model.BookingEntity
 import pt.ulisboa.tecnico.sharist.data.model.PendingOperation
 import pt.ulisboa.tecnico.sharist.data.model.RideEntity
 import pt.ulisboa.tecnico.sharist.data.model.RideRequestEntity
@@ -62,10 +63,32 @@ interface PendingOperationDao {
     suspend fun clearSynced()
 }
 
-@Database(entities = [RideRequestEntity::class, RideEntity::class, PendingOperation::class], version = 5, exportSchema = false)
+@Dao
+interface BookingDao {
+    @Query("SELECT * FROM bookings_cache WHERE driverId = :uid ORDER BY createdAtMs DESC")
+    fun observeDriverBookings(uid: String): Flow<List<BookingEntity>>
+
+    @Query("SELECT * FROM bookings_cache WHERE passengerId = :uid ORDER BY createdAtMs DESC")
+    fun observePassengerBookings(uid: String): Flow<List<BookingEntity>>
+
+    @Query("SELECT * FROM bookings_cache WHERE rideId = :rideId")
+    fun observeRideBookings(rideId: String): Flow<List<BookingEntity>>
+
+    @Query("SELECT * FROM bookings_cache WHERE id = :id")
+    suspend fun getById(id: String): BookingEntity?
+
+    @Upsert suspend fun upsert(bookings: List<BookingEntity>)
+    @Upsert suspend fun upsertOne(booking: BookingEntity)
+
+    @Query("DELETE FROM bookings_cache WHERE cachedAtMs < :cutoffMs AND status != 'ACCEPTED'")
+    suspend fun evictStale(cutoffMs: Long)
+}
+
+@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 6, exportSchema = false)
 abstract class SharISTDatabase : RoomDatabase() {
     abstract fun requestDao(): RideRequestDao
     abstract fun rideDao(): RideDao
+    abstract fun bookingDao(): BookingDao
     abstract fun pendingDao(): PendingOperationDao
 
     companion object {
@@ -80,10 +103,12 @@ abstract class SharISTDatabase : RoomDatabase() {
 class LocalDataSource(private val db: SharISTDatabase) {
     val requestDao get() = db.requestDao()
     val rideDao get() = db.rideDao()
+    val bookingDao get() = db.bookingDao()
     val pendingDao get() = db.pendingDao()
     suspend fun evictStale() {
         val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
         requestDao.evictStale(cutoff)
         rideDao.evictStale(cutoff)
+        bookingDao.evictStale(cutoff)
     }
 }

@@ -9,13 +9,30 @@
         android:orientation="vertical"
         android:padding="24dp">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Profile"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="16dp"/>
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="16dp">
+
+            <ImageButton
+                android:id="@+id/btn_back"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close_white"
+                android:contentDescription="Back"
+                android:tint="?attr/colorOnSurface"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Profile"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <TextView android:id="@+id/tv_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:textStyle="bold" android:textSize="20sp"/>
         <TextView android:id="@+id/tv_email" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>

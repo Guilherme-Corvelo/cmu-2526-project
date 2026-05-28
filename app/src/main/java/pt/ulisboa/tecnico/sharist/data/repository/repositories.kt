@@ -121,33 +121,83 @@ class RideRepository(
         }
     }
 
-    fun getRideBookings(rideId: String): Flow<List<Booking>> = remote.observeRideBookings(rideId)
-
-    fun getDriverBookings(uid: String): Flow<List<Booking>> = remote.observeDriverBookings(uid)
-
-    fun getPassengerBookings(uid: String): Flow<List<Booking>> = remote.observePassengerBookings(uid)
-        .onEach { bookings ->
-            // Passive Reconciliation: Automatically trigger refund for rejected/cancelled bookings
-            bookings.forEach { booking ->
-                if (booking.passengerId == uid && 
-                    (booking.status == BookingStatus.REJECTED || booking.status == BookingStatus.CANCELLED) &&
-                    booking.passengerPaid && !booking.passengerRefunded) {
-                    
-                    Log.d(TAG, "Auto-reconciling refund for booking ${booking.id}")
-                    // We launch this in a separate scope or just fire-and-forget
-                    // Since this is a repository, we can't easily access a viewModelScope.
-                    // However, we can use a global or pass a scope. 
-                    // For now, let's assume we can use a simple CoroutineScope(Dispatchers.IO)
-                    CoroutineScope(Dispatchers.IO).launch {
-                        try {
-                            remote.updateBookingStatus(booking.id, booking.status)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Auto-refund failed", e)
-                        }
+    fun getRideBookings(rideId: String): Flow<List<Booking>> = callbackFlow {
+        val localJob = launch {
+            local.bookingDao.observeRideBookings(rideId)
+                .map { it.map { e -> e.toDomain() } }
+                .collect { trySend(it) }
+        }
+        var remoteJob: kotlinx.coroutines.Job? = null
+        if (network.isConnected) {
+            remoteJob = launch(Dispatchers.IO) {
+                remote.observeRideBookings(rideId)
+                    .catch { Log.e(TAG, "Remote bookings sync error", it) }
+                    .collect { list ->
+                        local.bookingDao.upsert(list.map { it.toEntity() })
                     }
-                }
             }
         }
+        awaitClose {
+            localJob.cancel()
+            remoteJob?.cancel()
+        }
+    }
+
+    fun getDriverBookings(uid: String): Flow<List<Booking>> = callbackFlow {
+        val localJob = launch {
+            local.bookingDao.observeDriverBookings(uid)
+                .map { it.map { e -> e.toDomain() } }
+                .collect { trySend(it) }
+        }
+        var remoteJob: kotlinx.coroutines.Job? = null
+        if (network.isConnected) {
+            remoteJob = launch(Dispatchers.IO) {
+                remote.observeDriverBookings(uid)
+                    .catch { Log.e(TAG, "Remote driver bookings sync error", it) }
+                    .collect { list ->
+                        local.bookingDao.upsert(list.map { it.toEntity() })
+                    }
+            }
+        }
+        awaitClose {
+            localJob.cancel()
+            remoteJob?.cancel()
+        }
+    }
+
+    fun getPassengerBookings(uid: String): Flow<List<Booking>> = callbackFlow {
+        val localJob = launch {
+            local.bookingDao.observePassengerBookings(uid)
+                .map { it.map { e -> e.toDomain() } }
+                .collect { trySend(it) }
+        }
+        var remoteJob: kotlinx.coroutines.Job? = null
+        if (network.isConnected) {
+            remoteJob = launch(Dispatchers.IO) {
+                remote.observePassengerBookings(uid)
+                    .onEach { bookings ->
+                        // Passive Reconciliation
+                        bookings.forEach { booking ->
+                            if (booking.passengerId == uid && 
+                                (booking.status == BookingStatus.REJECTED || booking.status == BookingStatus.CANCELLED) &&
+                                booking.passengerPaid && !booking.passengerRefunded) {
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    updateBookingStatus(booking.id, booking.status)
+                                }
+                            }
+                        }
+                    }
+                    .catch { Log.e(TAG, "Remote passenger bookings sync error", it) }
+                    .collect { list ->
+                        local.bookingDao.upsert(list.map { it.toEntity() })
+                    }
+            }
+        }
+        awaitClose {
+            localJob.cancel()
+            remoteJob?.cancel()
+        }
+    }
 
     suspend fun bookRide(booking: Booking): Result<String> {
         if (!network.isConnected) {
@@ -157,8 +207,11 @@ class RideRepository(
         return runCatching { remote.createBooking(booking) }
     }
 
-    suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) {
+    suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) = runCatching {
         remote.updateBookingStatus(bookingId, status)
+        local.bookingDao.getById(bookingId)?.let {
+            local.bookingDao.upsertOne(it.copy(status = status.name))
+        }
     }
 
     suspend fun syncPendingOperations() {
@@ -193,7 +246,7 @@ class RideRequestRepository(
     fun getOpenRequests(): Flow<List<RideRequest>> = remote.observeOpenRequests()
         .map { list -> 
             val uid = remote.currentUid
-            list.filter { !it.deniedBy.contains(uid) }
+            list.filter { !it.deniedBy.contains(uid) && !it.deniedDrivers.contains(uid) }
         }
 
     fun getPassengerRequests(passengerId: String): Flow<List<RideRequest>> =
@@ -217,8 +270,27 @@ class RideRequestRepository(
                 }
             }
 
-    fun getDriverRequests(driverId: String): Flow<List<RideRequest>> =
-        remote.observeDriverRequests(driverId)
+    fun getDriverRequests(driverId: String): Flow<List<RideRequest>> = callbackFlow {
+        val localJob = launch {
+            local.requestDao.observeDriverRequests(driverId)
+                .map { it.map { e -> e.toDomain() } }
+                .collect { trySend(it) }
+        }
+        var remoteJob: kotlinx.coroutines.Job? = null
+        if (network.isConnected) {
+            remoteJob = launch(Dispatchers.IO) {
+                remote.observeDriverRequests(driverId)
+                    .catch { Log.e("RideRequestRepository", "Remote driver requests error", it) }
+                    .collect { list ->
+                        local.requestDao.upsert(list.map { it.toEntity() })
+                    }
+            }
+        }
+        awaitClose {
+            localJob.cancel()
+            remoteJob?.cancel()
+        }
+    }
 
     suspend fun createRequest(request: RideRequest): Result<String> = runCatching {
         remote.createRequest(request)
@@ -232,16 +304,35 @@ class RideRequestRepository(
         remote.denyRequest(requestId, driverId)
     }
 
+    suspend fun rejectDriver(requestId: String, driverId: String): Result<Unit> = runCatching {
+        remote.rejectDriver(requestId, driverId)
+    }
+
     suspend fun cancelRequest(requestId: String): Result<Unit> = runCatching {
         remote.cancelRequest(requestId)
     }
 
     suspend fun updateRequestStatus(requestId: String, status: RequestStatus): Result<Unit> = runCatching {
         remote.updateRequestStatus(requestId, status)
+        local.requestDao.getById(requestId)?.let {
+            local.requestDao.upsertOne(it.copy(status = status.name))
+        }
     }
 
     suspend fun submitReview(review: Review) {
         remote.submitReview(review)
+        local.bookingDao.getById(review.requestId)?.let {
+            val uid = remote.currentUid
+            val updated = if (uid == it.driverId) it.copy(passengerReviewed = true)
+                          else it.copy(driverReviewed = true)
+            local.bookingDao.upsertOne(updated)
+        }
+        local.requestDao.getById(review.requestId)?.let {
+            val uid = remote.currentUid
+            val updated = if (uid == it.driverId) it.copy(passengerReviewed = true)
+                          else it.copy(driverReviewed = true)
+            local.requestDao.upsertOne(updated)
+        }
     }
 
     fun getReviewsForUser(userId: String): Flow<List<Review>> = remote.observeReviewsForUser(userId)
