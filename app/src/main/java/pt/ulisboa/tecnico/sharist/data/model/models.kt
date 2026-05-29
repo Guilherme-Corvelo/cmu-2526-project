@@ -48,6 +48,7 @@ data class RideRequest(
     val passengerRefunded: Boolean = false,
     val deniedBy: List<String> = emptyList(), // Drivers who ignored this request
     val deniedDrivers: List<String> = emptyList(), // Drivers rejected by the passenger
+    val isPending: Boolean = false,
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -80,6 +81,7 @@ data class Ride(
     val pricePerSeat: Double = 0.0,
     val status: RideStatus = RideStatus.OPEN,
     val weatherCondition: WeatherCondition = WeatherCondition(),
+    val isPending: Boolean = false,
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -121,7 +123,8 @@ data class Booking(
     val driverReviewed: Boolean = false,
     val passengerPaid: Boolean = false,
     val driverPaid: Boolean = false,
-    val passengerRefunded: Boolean = false
+    val passengerRefunded: Boolean = false,
+    val isPending: Boolean = false
 )
 
 enum class BookingStatus { PENDING, ACCEPTED, EN_ROUTE, PICKED_UP, COMPLETED, CANCELLED, REJECTED }
@@ -142,13 +145,16 @@ data class RideEntity(
     val status: String,
     val weatherType: String = "NONE",
     val weatherThreshold: Double? = null,
+    val isPending: Boolean = false,
+    val createdAtMs: Long = 0L,
     val cachedAtMs: Long = System.currentTimeMillis()
 )
 
 fun Ride.toEntity() = RideEntity(
     id, driverId, driverName, driverPhotoUrl, driverRating, origin, destination,
     departureTime?.time ?: 0L, seatsTotal, seatsAvailable, pricePerSeat, status.name,
-    weatherCondition.type.name, weatherCondition.threshold
+    weatherCondition.type.name, weatherCondition.threshold, isPending,
+    createdAt?.time ?: System.currentTimeMillis()
 )
 
 fun RideEntity.toDomain() = Ride(
@@ -161,7 +167,9 @@ fun RideEntity.toDomain() = Ride(
     weatherCondition = WeatherCondition(
         type = WeatherType.valueOf(weatherType),
         threshold = weatherThreshold
-    )
+    ),
+    isPending = isPending,
+    createdAt = if (createdAtMs > 0) Date(createdAtMs) else null
 )
 
 @Entity(tableName = "requests_cache")
@@ -180,13 +188,16 @@ data class RideRequestEntity(
     val status: String,
     val passengerReviewed: Boolean,
     val driverReviewed: Boolean,
+    val isPending: Boolean = false,
+    val createdAtMs: Long = 0L,
     val cachedAtMs: Long = System.currentTimeMillis()
 )
 
 fun RideRequest.toEntity() = RideRequestEntity(
     id, passengerId, passengerName, origin, destination,
     requestedTime?.time ?: 0L, estimatedPrice,
-    driverId, driverName, driverRating, status.name, passengerReviewed, driverReviewed
+    driverId, driverName, driverRating, status.name, passengerReviewed, driverReviewed, isPending,
+    createdAt?.time ?: System.currentTimeMillis()
 )
 
 fun RideRequestEntity.toDomain() = RideRequest(
@@ -202,7 +213,9 @@ fun RideRequestEntity.toDomain() = RideRequest(
     driverRating = driverRating,
     status = RequestStatus.valueOf(status),
     passengerReviewed = passengerReviewed,
-    driverReviewed = driverReviewed
+    driverReviewed = driverReviewed,
+    isPending = isPending,
+    createdAt = if (createdAtMs > 0) Date(createdAtMs) else null
 )
 
 @Entity(tableName = "bookings_cache")
@@ -228,14 +241,15 @@ data class BookingEntity(
     val passengerPaid: Boolean,
     val driverPaid: Boolean,
     val passengerRefunded: Boolean,
+    val isPending: Boolean = false,
     val cachedAtMs: Long = System.currentTimeMillis()
 )
 
 fun Booking.toEntity() = BookingEntity(
     id, rideId, passengerId, passengerName, passengerRating, passengerPhotoUrl,
-    seatsRequested, totalPrice, status.name, createdAt?.time ?: 0L,
+    seatsRequested, totalPrice, status.name, createdAt?.time ?: System.currentTimeMillis(),
     origin, destination, departureTime?.time ?: 0L, driverName, driverId,
-    recurring, passengerReviewed, driverReviewed, passengerPaid, driverPaid, passengerRefunded
+    recurring, passengerReviewed, driverReviewed, passengerPaid, driverPaid, passengerRefunded, isPending
 )
 
 fun BookingEntity.toDomain() = Booking(
@@ -245,7 +259,7 @@ fun BookingEntity.toDomain() = Booking(
     createdAt = Date(createdAtMs), origin = origin, destination = destination,
     departureTime = Date(departureTimeMs), driverName = driverName, driverId = driverId,
     recurring = recurring, passengerReviewed = passengerReviewed, driverReviewed = driverReviewed,
-    passengerPaid = passengerPaid, driverPaid = driverPaid, passengerRefunded = passengerRefunded
+    passengerPaid = passengerPaid, driverPaid = driverPaid, passengerRefunded = passengerRefunded, isPending = isPending
 )
 
 @Entity(tableName = "pending_operations")
@@ -254,5 +268,6 @@ data class PendingOperation(
     val type: String,
     val payload: String,
     val createdAtMs: Long = System.currentTimeMillis(),
-    var synced: Boolean = false
+    var synced: Boolean = false,
+    var errorMessage: String? = null
 )

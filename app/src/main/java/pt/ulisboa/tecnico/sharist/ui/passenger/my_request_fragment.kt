@@ -139,6 +139,7 @@ class MyRequestAdapter(
     private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
+        val tvPendingBadge: TextView = v.findViewById(R.id.tv_pending_badge)
         val tvTime: TextView = v.findViewById(R.id.tv_time)
         val tvPrice: TextView = v.findViewById(R.id.tv_price)
         val tvDriver: TextView = v.findViewById(R.id.tv_driver)
@@ -152,6 +153,7 @@ class MyRequestAdapter(
         val item = getItem(pos)
         if (item is RideRequest) {
             h.tvRoute.text = "${item.origin} → ${item.destination}"
+            h.tvPendingBadge.visibility = if (item.isPending) View.VISIBLE else View.GONE
             h.tvTime.text = item.requestedTime?.let { dateFmt.format(it) } ?: "Pending..."
             h.tvPrice.text = "€ %.2f".format(item.estimatedPrice)
             h.tvDriver.text = item.driverName?.let { "Driver: $it" } ?: "Searching for driver..."
@@ -168,6 +170,7 @@ class MyRequestAdapter(
             h.btnRate.setOnClickListener { onRate(item) }
         } else if (item is pt.ulisboa.tecnico.sharist.data.model.Booking) {
             h.tvRoute.text = "${item.origin} → ${item.destination}"
+            h.tvPendingBadge.visibility = if (item.isPending) View.VISIBLE else View.GONE
             h.tvTime.text = item.departureTime?.let { dateFmt.format(it) } ?: "Pending..."
             h.tvPrice.text = "€ %.2f".format(item.totalPrice)
             h.tvDriver.text = "Driver: ${item.driverName}"

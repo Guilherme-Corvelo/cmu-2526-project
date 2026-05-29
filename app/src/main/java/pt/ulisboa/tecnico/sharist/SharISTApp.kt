@@ -3,6 +3,11 @@ package pt.ulisboa.tecnico.sharist
 import android.annotation.SuppressLint
 import android.app.Application
 import android.util.Log
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.FirebaseApp
@@ -115,8 +120,14 @@ class SharISTApp : Application() {
     val requestRepository by lazy { RideRequestRepository(remoteDataSource, localDataSource, networkMonitor) }
     val userRepository by lazy { UserRepository(remoteDataSource) }
 
+    companion object {
+        const val CHANNEL_ID = "sync_channel"
+        const val NOTIFICATION_ID = 1001
+    }
+
     override fun onCreate() {
         super.onCreate()
+        createNotificationChannel()
         try {
             if (FirebaseApp.getApps(this).isEmpty()) {
                 FirebaseApp.initializeApp(this)
@@ -130,10 +141,51 @@ class SharISTApp : Application() {
             .onEach { connectionType ->
                 try {
                     if (connectionType == ConnectionType.WIFI || connectionType == ConnectionType.METERED) {
-                        appScope.launch { rideRepository.syncPendingOperations() }
+                        appScope.launch { 
+                            val results = rideRepository.syncPendingOperations()
+                            showSyncNotification(results)
+                        }
                     }
                 } catch (e: Exception) { Log.e("SharISTApp", "Sync error", e) }
             }
             .launchIn(appScope)
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Sync Notifications"
+            val descriptionText = "Notifications about background sync status"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun showSyncNotification(results: List<Pair<String, Boolean>>) {
+        if (results.isEmpty()) return
+
+        val successCount = results.count { it.second }
+        val failCount = results.size - successCount
+
+        val message = when {
+            failCount == 0 -> "All $successCount operations synced successfully!"
+            successCount == 0 -> "Failed to sync $failCount operations. Check your connection."
+            else -> "Synced $successCount operations, $failCount failed."
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle("Data Synchronization")
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+
+        val notificationManager: NotificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, builder.build())
     }
 }

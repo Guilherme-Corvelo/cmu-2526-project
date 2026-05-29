@@ -271,6 +271,7 @@ class ActiveRideAdapter(
 ) : androidx.recyclerview.widget.ListAdapter<Any, ActiveRideAdapter.VH>(DIFF) {
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
+        val tvPendingBadge: TextView = v.findViewById(R.id.tv_pending_badge)
         val tvDriver: TextView = v.findViewById(R.id.tv_driver)
         val btnAction: android.widget.Button = v.findViewById(R.id.btn_action)
         val btnCancel: android.widget.Button = v.findViewById(R.id.btn_cancel)
@@ -307,6 +308,12 @@ class ActiveRideAdapter(
             else -> ""
         }
         val isRecurring = if (item is Booking) item.recurring else false
+        val isPending = when(item) {
+            is RideRequest -> item.isPending
+            is Booking -> item.isPending
+            is RideJourney -> item.ride.isPending
+            else -> false
+        }
 
         val sb = android.text.SpannableStringBuilder()
         if (isRecurring) sb.append("⟳ ")
@@ -343,6 +350,7 @@ class ActiveRideAdapter(
         }
         sb.append(": $origin → $destination")
         holder.tvRoute.text = sb
+        holder.tvPendingBadge.visibility = if (isPending) View.VISIBLE else View.GONE
 
         val (statusText, btnText, nextStatus) = when {
             item is RideRequest && item.status == RequestStatus.ACCEPTED -> Triple("Accepted - Get moving!", "Start Trip", RequestStatus.EN_ROUTE)

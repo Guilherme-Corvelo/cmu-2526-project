@@ -25,6 +25,9 @@ interface RideRequestDao {
     @Upsert suspend fun upsert(requests: List<RideRequestEntity>)
     @Upsert suspend fun upsertOne(request: RideRequestEntity)
 
+    @Query("DELETE FROM requests_cache WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Query("DELETE FROM requests_cache WHERE cachedAtMs < :cutoffMs AND status != 'OPEN' AND status != 'ACCEPTED'")
     suspend fun evictStale(cutoffMs: Long)
 }
@@ -48,6 +51,9 @@ interface RideDao {
 
     @Upsert suspend fun upsert(rides: List<RideEntity>)
     @Upsert suspend fun upsertOne(ride: RideEntity)
+
+    @Query("DELETE FROM rides_cache WHERE id = :id")
+    suspend fun deleteById(id: String)
 
     @Query("DELETE FROM rides_cache WHERE cachedAtMs < :cutoffMs AND status != 'OPEN'")
     suspend fun evictStale(cutoffMs: Long)
@@ -80,11 +86,14 @@ interface BookingDao {
     @Upsert suspend fun upsert(bookings: List<BookingEntity>)
     @Upsert suspend fun upsertOne(booking: BookingEntity)
 
+    @Query("DELETE FROM bookings_cache WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Query("DELETE FROM bookings_cache WHERE cachedAtMs < :cutoffMs AND status != 'ACCEPTED'")
     suspend fun evictStale(cutoffMs: Long)
 }
 
-@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 6, exportSchema = false)
+@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 8, exportSchema = false)
 abstract class SharISTDatabase : RoomDatabase() {
     abstract fun requestDao(): RideRequestDao
     abstract fun rideDao(): RideDao

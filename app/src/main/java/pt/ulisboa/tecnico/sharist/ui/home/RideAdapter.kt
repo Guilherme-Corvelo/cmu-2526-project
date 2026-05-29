@@ -37,6 +37,7 @@ class RideAdapter(
         private val tvPrice:       TextView  = itemView.findViewById(R.id.tv_price)
         private val ivMeteredHint: ImageView = itemView.findViewById(R.id.iv_metered_hint)
         private val tvPeriodicBadge: TextView = itemView.findViewById(R.id.tv_periodic_badge)
+        private val tvPendingBadge: TextView = itemView.findViewById(R.id.tv_pending_badge)
 
         private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
 
@@ -48,6 +49,7 @@ class RideAdapter(
             tvSeats.text      = "${ride.seatsAvailable} seat(s) left"
             tvPrice.text      = "€%.2f / seat".format(ride.pricePerSeat)
 
+            tvPendingBadge.visibility = if (ride.isPending) View.VISIBLE else View.GONE
             tvPeriodicBadge.visibility = if (ride.periodic) View.VISIBLE else View.GONE
             if (ride.periodic && ride.periodicLabel.isNotBlank()) {
                 tvPeriodicBadge.text = ride.periodicLabel
