@@ -15,6 +15,9 @@
         <action
             android:id="@+id/action_home_to_ride_map"
             app:destination="@id/rideMapFragment"/>
+        <action
+            android:id="@+id/action_home_to_request_ride"
+            app:destination="@id/requestRideFragment" />
     </fragment>
 
     <fragment
@@ -30,7 +33,11 @@
     <fragment
         android:id="@+id/requestRideFragment"
         android:name="pt.ulisboa.tecnico.sharist.ui.passenger.RequestRideFragment"
-        android:label="Request a Ride" />
+        android:label="Request a Ride">
+        <action
+            android:id="@+id/action_request_to_my_requests"
+            app:destination="@id/myRequestsFragment" />
+    </fragment>
 
     <fragment
         android:id="@+id/myRequestsFragment"

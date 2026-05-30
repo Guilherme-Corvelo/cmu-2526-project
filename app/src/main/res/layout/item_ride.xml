@@ -134,6 +134,38 @@
                     android:textColor="#1976D2"
                     android:text="€5.00 / seat"/>
             </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="end"
+                android:layout_marginTop="8dp">
+
+                <Button
+                    android:id="@+id/btn_details"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Details"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:minHeight="0dp"
+                    android:paddingVertical="4dp"
+                    android:textSize="12sp"
+                    android:layout_marginEnd="8dp"/>
+
+                <Button
+                    android:id="@+id/btn_cancel_ride"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Cancel"
+                    android:visibility="gone"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    app:backgroundTint="#FFEBEE"
+                    android:textColor="#C62828"
+                    android:minHeight="0dp"
+                    android:paddingVertical="4dp"
+                    android:textSize="12sp"/>
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

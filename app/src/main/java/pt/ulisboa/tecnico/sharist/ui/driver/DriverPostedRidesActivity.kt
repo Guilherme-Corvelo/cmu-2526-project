@@ -28,15 +28,32 @@ class DriverPostedRidesActivity : AppCompatActivity() {
 
         val recycler = findViewById<RecyclerView>(R.id.recycler_posted_rides)
         val empty = findViewById<TextView>(R.id.tv_empty)
+        val uid = app.userRepository.currentUid
 
-        val adapter = RideAdapter(app.networkMonitor) { ride ->
+        val adapter = RideAdapter(
+            network = app.networkMonitor,
+            currentUid = uid,
+            onCancelRide = { ride ->
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Cancel Ride")
+                    .setMessage("Are you sure you want to cancel this ride?")
+                    .setPositiveButton("Yes") { _, _ ->
+                        lifecycleScope.launch {
+                            app.rideRepository.cancelRide(ride.id)
+                                .onSuccess { android.widget.Toast.makeText(this@DriverPostedRidesActivity, "Ride cancelled", android.widget.Toast.LENGTH_SHORT).show() }
+                                .onFailure { e -> android.widget.Toast.makeText(this@DriverPostedRidesActivity, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show() }
+                        }
+                    }
+                    .setNegativeButton("No", null)
+                    .show()
+            }
+        ) { ride ->
             startActivity(Intent(this, RideDetailActivity::class.java).apply { putExtra("RIDE_ID", ride.id) })
         }
 
         recycler.layoutManager = LinearLayoutManager(this)
         recycler.adapter = adapter
 
-        val uid = app.userRepository.currentUid
         if (uid != null) {
             lifecycleScope.launch {
                 app.rideRepository.getDriverRides(uid).collectLatest { rides ->

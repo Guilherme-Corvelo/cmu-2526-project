@@ -166,6 +166,15 @@ class RideDetailViewModel(
 
     fun startRide(rideId: String) {
         viewModelScope.launch {
+            val currentRide = _ride.value
+            if (currentRide?.departureTime != null) {
+                val now = System.currentTimeMillis()
+                val maxStartTime = currentRide.departureTime!!.time - (5 * 60 * 1000)
+                if (now < maxStartTime) {
+                    _bookingState.value = BookingState.Error("Too early to start! You can start at most 5 minutes before departure.")
+                    return@launch
+                }
+            }
             _bookingState.value = BookingState.Loading
             rideRepo.startRide(rideId).onSuccess {
                 _ride.value = _ride.value?.copy(status = RideStatus.EN_ROUTE)
@@ -271,30 +280,27 @@ class RideDetailActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
 
                 launch {
-                    viewModel.ride.filterNotNull().collect { ride -> populateUI(ride, rideId) }
-                }
-                launch {
-                    viewModel.isRideOwner.collect { isOwner ->
-                        val ride = viewModel.ride.value
-                        val isCancelled = ride?.status == RideStatus.CANCELLED
-                        val isCompleted = ride?.status == RideStatus.COMPLETED
+                    combine(viewModel.ride.filterNotNull(), viewModel.isRideOwner) { ride, isOwner ->
+                        ride to isOwner
+                    }.collect { (ride, isOwner) ->
+                        populateUI(ride, rideId)
+                        val isCancelled = ride.status == RideStatus.CANCELLED
+                        val isCompleted = ride.status == RideStatus.COMPLETED
+                        val isEnRoute = ride.status == RideStatus.EN_ROUTE
 
                         if (isOwner) {
                             btnBook.visibility = View.GONE
-                            btnCancelRide.visibility = if (isCancelled || isCompleted) View.GONE else View.VISIBLE
                             cbRecurringBooking.visibility = View.GONE
                             
-                            // Show Start/Finish based on status
-                            btnStartRide.visibility = if (ride?.status == RideStatus.OPEN || ride?.status == RideStatus.FULL) View.VISIBLE else View.GONE
-                            btnFinishRide.visibility = if (ride?.status == RideStatus.EN_ROUTE) View.VISIBLE else View.GONE
+                            btnCancelRide.visibility = if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL) View.VISIBLE else View.GONE
+                            btnStartRide.visibility = if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL) View.VISIBLE else View.GONE
+                            btnFinishRide.visibility = if (isEnRoute) View.VISIBLE else View.GONE
                         } else {
-                            btnBook.visibility = if (isCancelled || isCompleted || ride?.status == RideStatus.EN_ROUTE) View.GONE else View.VISIBLE
+                            btnBook.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
                             btnCancelRide.visibility = View.GONE
                             btnStartRide.visibility = View.GONE
                             btnFinishRide.visibility = View.GONE
-                            if (ride?.periodic == true) {
-                                cbRecurringBooking.visibility = View.VISIBLE
-                            }
+                            cbRecurringBooking.visibility = if (ride.periodic && !isCancelled && !isCompleted) View.VISIBLE else View.GONE
                         }
                     }
                 }

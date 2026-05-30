@@ -83,6 +83,17 @@ class MyActiveRidesFragment : Fragment() {
                                 Toast.makeText(requireContext(), "Booking updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
                             }
                             item is RideJourney && newStatus is RideStatus -> {
+                                if (newStatus == RideStatus.EN_ROUTE) {
+                                    val departure = item.ride.departureTime
+                                    if (departure != null) {
+                                        val now = System.currentTimeMillis()
+                                        val maxStartTime = departure.time - (5 * 60 * 1000) // 5 minutes before
+                                        if (now < maxStartTime) {
+                                            Toast.makeText(requireContext(), "Too early to start! You can start at most 5 minutes before departure.", Toast.LENGTH_LONG).show()
+                                            return@launch
+                                        }
+                                    }
+                                }
                                 val res = when (newStatus) {
                                     RideStatus.EN_ROUTE -> rideRepo.startRide(item.ride.id)
                                     RideStatus.COMPLETED -> rideRepo.completeRide(item.ride.id)
@@ -314,6 +325,7 @@ class ActiveRideAdapter(
             is RideJourney -> item.ride.isPending
             else -> false
         }
+        val hasNewReqs = item is RideJourney && item.ride.hasNewRequests
 
         val sb = android.text.SpannableStringBuilder()
         if (isRecurring) sb.append("⟳ ")
@@ -350,7 +362,25 @@ class ActiveRideAdapter(
         }
         sb.append(": $origin → $destination")
         holder.tvRoute.text = sb
-        holder.tvPendingBadge.visibility = if (isPending) View.VISIBLE else View.GONE
+        
+        holder.tvPendingBadge.clearAnimation()
+        if (hasNewReqs) {
+            holder.tvPendingBadge.visibility = View.VISIBLE
+            holder.tvPendingBadge.text = "NEW PASSENGERS"
+            holder.tvPendingBadge.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.RED)
+            val anim = android.view.animation.AlphaAnimation(1.0f, 0.2f).apply {
+                duration = 500
+                repeatMode = android.view.animation.Animation.REVERSE
+                repeatCount = android.view.animation.Animation.INFINITE
+            }
+            holder.tvPendingBadge.startAnimation(anim)
+        } else if (isPending) {
+            holder.tvPendingBadge.visibility = View.VISIBLE
+            holder.tvPendingBadge.text = "PENDING"
+            holder.tvPendingBadge.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FF9800"))
+        } else {
+            holder.tvPendingBadge.visibility = View.GONE
+        }
 
         val (statusText, btnText, nextStatus) = when {
             item is RideRequest && item.status == RequestStatus.ACCEPTED -> Triple("Accepted - Get moving!", "Start Trip", RequestStatus.EN_ROUTE)

@@ -1,5 +1,7 @@
 package pt.ulisboa.tecnico.sharist.ui.home
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.view.*
 import android.widget.*
 import androidx.recyclerview.widget.DiffUtil
@@ -7,6 +9,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.data.model.Ride
+import pt.ulisboa.tecnico.sharist.data.model.RideStatus
 import pt.ulisboa.tecnico.sharist.utils.ImageLoader
 import pt.ulisboa.tecnico.sharist.utils.NetworkMonitor
 import java.text.SimpleDateFormat
@@ -14,6 +17,8 @@ import java.util.*
 
 class RideAdapter(
     private val network: NetworkMonitor,
+    private val currentUid: String? = null,
+    private val onCancelRide: ((Ride) -> Unit)? = null,
     private val onRideClick: (Ride) -> Unit
 ) : ListAdapter<Ride, RideAdapter.RideViewHolder>(DIFF_CALLBACK) {
 
@@ -38,6 +43,8 @@ class RideAdapter(
         private val ivMeteredHint: ImageView = itemView.findViewById(R.id.iv_metered_hint)
         private val tvPeriodicBadge: TextView = itemView.findViewById(R.id.tv_periodic_badge)
         private val tvPendingBadge: TextView = itemView.findViewById(R.id.tv_pending_badge)
+        private val btnCancel: Button? = itemView.findViewById(R.id.btn_cancel_ride)
+        private val btnDetails: Button? = itemView.findViewById(R.id.btn_details)
 
         private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
 
@@ -49,13 +56,48 @@ class RideAdapter(
             tvSeats.text      = "${ride.seatsAvailable} seat(s) left"
             tvPrice.text      = "€%.2f / seat".format(ride.pricePerSeat)
 
-            tvPendingBadge.visibility = if (ride.isPending) View.VISIBLE else View.GONE
             tvPeriodicBadge.visibility = if (ride.periodic) View.VISIBLE else View.GONE
             if (ride.periodic && ride.periodicLabel.isNotBlank()) {
                 tvPeriodicBadge.text = ride.periodicLabel
             } else {
                 tvPeriodicBadge.text = "Periodic"
             }
+
+            // Handle Pending Badges (Sync or Requests)
+            val isDriverView = currentUid != null && ride.driverId == currentUid
+            tvPendingBadge.clearAnimation()
+            if (isDriverView && ride.hasNewRequests) {
+                tvPendingBadge.visibility = View.VISIBLE
+                tvPendingBadge.text = "NEW PASSENGERS"
+                tvPendingBadge.backgroundTintList = ColorStateList.valueOf(Color.RED)
+                
+                // Flashing animation
+                val anim = android.view.animation.AlphaAnimation(1.0f, 0.2f).apply {
+                    duration = 500
+                    repeatMode = android.view.animation.Animation.REVERSE
+                    repeatCount = android.view.animation.Animation.INFINITE
+                }
+                tvPendingBadge.startAnimation(anim)
+            } else if (ride.isPending) {
+                tvPendingBadge.visibility = View.VISIBLE
+                tvPendingBadge.text = "PENDING"
+                tvPendingBadge.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800"))
+            } else {
+                tvPendingBadge.visibility = View.GONE
+            }
+
+            // Show cancel button if we have a callback and the ride is cancellable
+            val isOwner = currentUid != null && ride.driverId == currentUid
+            val isCancellable = ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL
+            
+            btnCancel?.visibility = if (onCancelRide != null && isOwner && isCancellable) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+            btnCancel?.setOnClickListener { onCancelRide?.invoke(ride) }
+
+            btnDetails?.setOnClickListener { onRideClick(ride) }
 
             // Lazy image load with metered awareness
             ImageLoader.load(

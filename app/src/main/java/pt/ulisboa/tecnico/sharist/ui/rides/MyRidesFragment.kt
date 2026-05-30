@@ -35,7 +35,26 @@ class MyRidesFragment : Fragment() {
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
         val fab = view.findViewById<FloatingActionButton>(R.id.fab_add_ride)
 
-        adapter = RideAdapter(networkMonitor) { ride ->
+        val uid = userRepo.currentUid
+
+        adapter = RideAdapter(
+            network = networkMonitor,
+            currentUid = uid,
+            onCancelRide = { ride ->
+                androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                    .setTitle("Cancel Ride")
+                    .setMessage("Are you sure you want to cancel this ride?")
+                    .setPositiveButton("Yes") { _, _ ->
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            rideRepo.cancelRide(ride.id)
+                                .onSuccess { android.widget.Toast.makeText(requireContext(), "Ride cancelled", android.widget.Toast.LENGTH_SHORT).show() }
+                                .onFailure { e -> android.widget.Toast.makeText(requireContext(), "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show() }
+                        }
+                    }
+                    .setNegativeButton("No", null)
+                    .show()
+            }
+        ) { ride ->
             val intent = Intent(requireContext(), RideDetailActivity::class.java).apply {
                 putExtra("RIDE_ID", ride.id)
             }
@@ -45,7 +64,6 @@ class MyRidesFragment : Fragment() {
         rv.layoutManager = LinearLayoutManager(requireContext())
         rv.adapter = adapter
 
-        val uid = userRepo.currentUid
         if (uid != null) {
             viewLifecycleOwner.lifecycleScope.launch {
                 rideRepo.getDriverRides(uid).collectLatest { rides ->

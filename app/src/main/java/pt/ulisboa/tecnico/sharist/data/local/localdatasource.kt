@@ -16,8 +16,14 @@ interface RideRequestDao {
     @Query("SELECT * FROM requests_cache WHERE passengerId = :uid ORDER BY requestedTimeMs DESC")
     fun observePassengerRequests(uid: String): Flow<List<RideRequestEntity>>
 
+    @Query("SELECT * FROM requests_cache WHERE passengerId = :uid")
+    suspend fun getPassengerRequestsSync(uid: String): List<RideRequestEntity>
+
     @Query("SELECT * FROM requests_cache WHERE driverId = :uid ORDER BY requestedTimeMs DESC")
     fun observeDriverRequests(uid: String): Flow<List<RideRequestEntity>>
+
+    @Query("SELECT * FROM requests_cache WHERE passengerId = :uid AND status IN ('OPEN', 'ACCEPTED', 'EN_ROUTE', 'PICKED_UP')")
+    suspend fun getActivePassengerRequests(uid: String): List<RideRequestEntity>
 
     @Query("SELECT * FROM requests_cache WHERE id = :id")
     suspend fun getById(id: String): RideRequestEntity?
@@ -39,6 +45,12 @@ interface RideDao {
 
     @Query("SELECT * FROM rides_cache WHERE driverId = :uid ORDER BY departureTimeMs DESC")
     fun observeDriverRides(uid: String): Flow<List<RideEntity>>
+
+    @Query("SELECT * FROM rides_cache WHERE driverId = :uid")
+    suspend fun getDriverRidesSync(uid: String): List<RideEntity>
+
+    @Query("SELECT * FROM rides_cache WHERE driverId = :uid AND status IN ('OPEN', 'FULL', 'EN_ROUTE')")
+    suspend fun getActiveDriverRides(uid: String): List<RideEntity>
 
     @Query("SELECT * FROM rides_cache WHERE id = :id")
     suspend fun getById(id: String): RideEntity?
@@ -93,7 +105,7 @@ interface BookingDao {
     suspend fun evictStale(cutoffMs: Long)
 }
 
-@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 8, exportSchema = false)
+@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 10, exportSchema = false)
 abstract class SharISTDatabase : RoomDatabase() {
     abstract fun requestDao(): RideRequestDao
     abstract fun rideDao(): RideDao

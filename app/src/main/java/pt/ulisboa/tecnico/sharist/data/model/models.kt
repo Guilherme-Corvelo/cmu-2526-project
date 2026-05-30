@@ -48,7 +48,8 @@ data class RideRequest(
     val passengerRefunded: Boolean = false,
     val deniedBy: List<String> = emptyList(), // Drivers who ignored this request
     val deniedDrivers: List<String> = emptyList(), // Drivers rejected by the passenger
-    val isPending: Boolean = false,
+    val weatherCondition: WeatherCondition = WeatherCondition(),
+    @get:PropertyName("pending") @set:PropertyName("pending") var isPending: Boolean = false,
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -81,7 +82,8 @@ data class Ride(
     val pricePerSeat: Double = 0.0,
     val status: RideStatus = RideStatus.OPEN,
     val weatherCondition: WeatherCondition = WeatherCondition(),
-    val isPending: Boolean = false,
+    @get:PropertyName("pending") @set:PropertyName("pending") var isPending: Boolean = false,
+    val hasNewRequests: Boolean = false,
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -124,7 +126,7 @@ data class Booking(
     val passengerPaid: Boolean = false,
     val driverPaid: Boolean = false,
     val passengerRefunded: Boolean = false,
-    val isPending: Boolean = false
+    @get:PropertyName("pending") @set:PropertyName("pending") var isPending: Boolean = false
 )
 
 enum class BookingStatus { PENDING, ACCEPTED, EN_ROUTE, PICKED_UP, COMPLETED, CANCELLED, REJECTED }
@@ -146,6 +148,7 @@ data class RideEntity(
     val weatherType: String = "NONE",
     val weatherThreshold: Double? = null,
     val isPending: Boolean = false,
+    val hasNewRequests: Boolean = false,
     val createdAtMs: Long = 0L,
     val cachedAtMs: Long = System.currentTimeMillis()
 )
@@ -154,7 +157,7 @@ fun Ride.toEntity() = RideEntity(
     id, driverId, driverName, driverPhotoUrl, driverRating, origin, destination,
     departureTime?.time ?: 0L, seatsTotal, seatsAvailable, pricePerSeat, status.name,
     weatherCondition.type.name, weatherCondition.threshold, isPending,
-    createdAt?.time ?: System.currentTimeMillis()
+    hasNewRequests, createdAt?.time ?: System.currentTimeMillis()
 )
 
 fun RideEntity.toDomain() = Ride(
@@ -169,6 +172,7 @@ fun RideEntity.toDomain() = Ride(
         threshold = weatherThreshold
     ),
     isPending = isPending,
+    hasNewRequests = hasNewRequests,
     createdAt = if (createdAtMs > 0) Date(createdAtMs) else null
 )
 
@@ -188,6 +192,8 @@ data class RideRequestEntity(
     val status: String,
     val passengerReviewed: Boolean,
     val driverReviewed: Boolean,
+    val weatherType: String = "NONE",
+    val weatherThreshold: Double? = null,
     val isPending: Boolean = false,
     val createdAtMs: Long = 0L,
     val cachedAtMs: Long = System.currentTimeMillis()
@@ -196,7 +202,8 @@ data class RideRequestEntity(
 fun RideRequest.toEntity() = RideRequestEntity(
     id, passengerId, passengerName, origin, destination,
     requestedTime?.time ?: 0L, estimatedPrice,
-    driverId, driverName, driverRating, status.name, passengerReviewed, driverReviewed, isPending,
+    driverId, driverName, driverRating, status.name, passengerReviewed, driverReviewed,
+    weatherCondition.type.name, weatherCondition.threshold, isPending,
     createdAt?.time ?: System.currentTimeMillis()
 )
 
@@ -214,6 +221,10 @@ fun RideRequestEntity.toDomain() = RideRequest(
     status = RequestStatus.valueOf(status),
     passengerReviewed = passengerReviewed,
     driverReviewed = driverReviewed,
+    weatherCondition = WeatherCondition(
+        type = WeatherType.valueOf(weatherType),
+        threshold = weatherThreshold
+    ),
     isPending = isPending,
     createdAt = if (createdAtMs > 0) Date(createdAtMs) else null
 )

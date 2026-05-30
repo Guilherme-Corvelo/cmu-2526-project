@@ -7,11 +7,7 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.AutoCompleteTextView
-import android.widget.ArrayAdapter
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.fragment.app.Fragment
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -21,17 +17,15 @@ import org.osmdroid.views.overlay.Polyline
 import androidx.navigation.fragment.findNavController
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
-import pt.ulisboa.tecnico.sharist.data.model.RequestStatus
-import pt.ulisboa.tecnico.sharist.data.model.RideRequest
+import pt.ulisboa.tecnico.sharist.data.model.*
 import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
+import pt.ulisboa.tecnico.sharist.utils.PriceCalculator
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import pt.ulisboa.tecnico.sharist.utils.PriceCalculator
+import java.util.*
+
 class RequestRideFragment : Fragment() {
     private lateinit var mapView: MapView
     private lateinit var requestRepo: RideRequestRepository
@@ -116,6 +110,20 @@ class RequestRideFragment : Fragment() {
         renderSelectedTime()
         updateRoutePreview()
 
+        val spinnerWeather = view.findViewById<Spinner>(R.id.spinner_weather)
+        val layoutThreshold = view.findViewById<View>(R.id.layout_threshold)
+        val etThreshold = view.findViewById<EditText>(R.id.et_threshold)
+
+        val weatherOptions = WeatherType.values().map { it.name }
+        spinnerWeather.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, weatherOptions)
+        spinnerWeather.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
+                val selected = WeatherType.values()[pos]
+                layoutThreshold.visibility = if (selected == WeatherType.TOO_HOT || selected == WeatherType.TOO_COLD) View.VISIBLE else View.GONE
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
+        }
+
         view.findViewById<Button>(R.id.btn_pick_time).setOnClickListener {
             TimePickerDialog(
                 requireContext(),
@@ -165,6 +173,10 @@ class RequestRideFragment : Fragment() {
                 requestedTime = selectedTime.time,
                 estimatedPrice = estimatedPrice,
                 status = RequestStatus.OPEN,
+                weatherCondition = WeatherCondition(
+                    type = WeatherType.values()[spinnerWeather.selectedItemPosition],
+                    threshold = etThreshold.text.toString().toDoubleOrNull()
+                ),
                 createdAt = Date()
             )
 

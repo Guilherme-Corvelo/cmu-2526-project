@@ -13,6 +13,11 @@
         android:title="My Rides"/>
 
     <item
+        android:id="@+id/myRequestsFragment"
+        android:icon="@drawable/ic_car_placeholder"
+        android:title="My Requests"/>
+
+    <item
         android:id="@+id/profileFragment"
         android:icon="@drawable/ic_person_placeholder"
         android:title="Profile"/>

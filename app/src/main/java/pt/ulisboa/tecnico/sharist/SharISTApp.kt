@@ -119,6 +119,7 @@ class SharISTApp : Application() {
     val rideRepository by lazy { RideRepository(remoteDataSource, localDataSource, networkMonitor) }
     val requestRepository by lazy { RideRequestRepository(remoteDataSource, localDataSource, networkMonitor) }
     val userRepository by lazy { UserRepository(remoteDataSource) }
+    val weatherService by lazy { pt.ulisboa.tecnico.sharist.utils.WeatherService() }
 
     companion object {
         const val CHANNEL_ID = "sync_channel"
@@ -144,6 +145,10 @@ class SharISTApp : Application() {
                         appScope.launch { 
                             val results = rideRepository.syncPendingOperations()
                             showSyncNotification(results)
+                            
+                            // Check weather cancellations after sync
+                            rideRepository.checkWeatherCancellations(weatherService)
+                            requestRepository.checkWeatherCancellations(weatherService)
                         }
                     }
                 } catch (e: Exception) { Log.e("SharISTApp", "Sync error", e) }

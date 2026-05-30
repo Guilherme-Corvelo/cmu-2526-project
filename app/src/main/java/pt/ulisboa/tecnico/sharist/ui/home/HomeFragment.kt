@@ -101,6 +101,9 @@ class HomeFragment : Fragment() {
         view.findViewById<Button>(R.id.btn_open_map).setOnClickListener {
             findNavController().navigate(R.id.action_home_to_ride_map)
         }
+        view.findViewById<Button>(R.id.btn_request_ride).setOnClickListener {
+            findNavController().navigate(R.id.action_home_to_request_ride)
+        }
 
         setupRecycler()
         setupSearch()

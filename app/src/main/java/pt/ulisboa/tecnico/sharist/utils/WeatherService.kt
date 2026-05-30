@@ -80,6 +80,21 @@ class WeatherService {
     }
 
     /**
+     * Attempts to find an IPMA location ID from a string.
+     */
+    fun getLocationId(city: String): Int {
+        val normalized = city.trim().lowercase()
+        return when {
+            normalized.contains("lisboa") || normalized.contains("lisbon") -> IpmaDistrict.LISBOA
+            normalized.contains("porto") -> IpmaDistrict.PORTO
+            normalized.contains("faro") -> IpmaDistrict.FARO
+            normalized.contains("coimbra") -> IpmaDistrict.COIMBRA
+            normalized.contains("braga") -> IpmaDistrict.BRAGA
+            else -> IpmaDistrict.LISBOA // Default to Lisboa
+        }
+    }
+
+    /**
      * Checks whether the ride should be warned/cancelled based on its
      * WeatherCondition and the current forecast.
      */
