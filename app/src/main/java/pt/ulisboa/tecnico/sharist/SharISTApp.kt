@@ -82,8 +82,14 @@ class SharISTApp : Application() {
             override suspend fun signIn(email: String, pass: String) = delegate.signIn(email, pass)
             override suspend fun register(email: String, pass: String) = delegate.register(email, pass)
             override fun signOut() {
-                firebaseInstance.value?.signOut()
-                mockInstance.value.signOut()
+                if (firebaseInstance.isInitialized()) {
+                    firebaseInstance.value?.clearListeners()
+                    firebaseInstance.value?.signOut()
+                }
+                if (mockInstance.isInitialized()) {
+                    mockInstance.value.clearListeners()
+                    mockInstance.value.signOut()
+                }
             }
             override suspend fun createUserProfile(user: User) = delegate.createUserProfile(user)
             override suspend fun getUser(uid: String) = delegate.getUser(uid)
@@ -118,8 +124,12 @@ class SharISTApp : Application() {
             override suspend fun processRideReputation(rideId: String) = delegate.processRideReputation(rideId)
 
             override fun clearListeners() {
-                firebaseInstance.value?.clearListeners()
-                mockInstance.value.clearListeners()
+                if (firebaseInstance.isInitialized()) {
+                    firebaseInstance.value?.clearListeners()
+                }
+                if (mockInstance.isInitialized()) {
+                    mockInstance.value.clearListeners()
+                }
             }
         }
     }

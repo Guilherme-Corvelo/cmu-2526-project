@@ -36,9 +36,11 @@ class MockRemoteDataSource : RemoteDataSource {
         DemoRideStore.updateBalance(uid, delta)
     }
 
-    override suspend fun submitReview(review: Review) {
+    override suspend fun submitReview(review: Review): String? {
         val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(review.passengerId ?: "")
-        DemoRideStore.addReview(review.copy(hashedPassengerId = hashedPid))
+        val finalReview = review.copy(hashedPassengerId = hashedPid)
+        DemoRideStore.addReview(finalReview)
+        return finalReview.rideId.ifBlank { "mock_ride" }
     }
 
     override fun observeReviewsForUser(userId: String): Flow<List<Review>> =
@@ -77,8 +79,10 @@ class MockRemoteDataSource : RemoteDataSource {
         DemoRideStore.updateBookingStatus(bookingId, status, currentUid)
     }
 
-    override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> =
-        DemoRideStore.observePassengerBookings(passengerId)
+    override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> {
+        val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(passengerId)
+        return DemoRideStore.observePassengerBookings(hashedPid)
+    }
 
     override fun observeRideBookings(rideId: String): Flow<List<Booking>> =
         DemoRideStore.observeRideBookings(rideId)
@@ -90,8 +94,10 @@ class MockRemoteDataSource : RemoteDataSource {
     override fun observeOpenRequests(): Flow<List<RideRequest>> =
         DemoRequestStore.requests.map { list -> list.filter { it.status == RequestStatus.OPEN } }
 
-    override fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>> =
-        DemoRequestStore.requests.map { list -> list.filter { it.passengerId == passengerId } }
+    override fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>> {
+        val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(passengerId)
+        return DemoRequestStore.requests.map { list -> list.filter { it.hashedPassengerId == hashedPid } }
+    }
 
     override fun observeDriverRequests(driverId: String): Flow<List<RideRequest>> =
         DemoRequestStore.requests.map { list -> list.filter { it.driverId == driverId } }

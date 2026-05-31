@@ -114,7 +114,12 @@ object DemoRequestStore {
         requests.value = requests.value.map {
             if (it.id == requestId && it.driverId == DEMO_DRIVER_ID && it.status == RequestStatus.ACCEPTED) {
                 completed = true
-                var updated = it.copy(status = RequestStatus.COMPLETED)
+                var updated = it.copy(
+                    status = RequestStatus.COMPLETED,
+                    origin = "anonymized",
+                    destination = "anonymized",
+                    passengerId = "anonymized"
+                )
                 
                 val uid = currentUid ?: DEMO_DRIVER_ID
                 if (uid == updated.driverId && !updated.driverPaid) {

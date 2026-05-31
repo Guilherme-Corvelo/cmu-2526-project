@@ -160,7 +160,11 @@ object DemoRideStore {
         
         ridesFlow.value = ridesFlow.value.map { ride ->
             if (ride.id == rideId) {
-                val updatedRide = ride.copy(status = RideStatus.COMPLETED)
+                val updatedRide = ride.copy(
+                    status = RideStatus.COMPLETED,
+                    origin = "anonymized",
+                    destination = "anonymized"
+                )
                 
                 if (ride.periodic) {
                     val nextDate = calculateNextOccurrence(ride.departureTime, ride.periodicLabel)
@@ -187,9 +191,20 @@ object DemoRideStore {
                                 // Driver gets paid upon completion in demo
                                 if (!booking.driverPaid) {
                                     updateBalance(booking.driverId, booking.totalPrice)
-                                    booking.copy(status = BookingStatus.COMPLETED, driverPaid = true)
+                                    booking.copy(
+                                        status = BookingStatus.COMPLETED, 
+                                        driverPaid = true,
+                                        origin = "anonymized",
+                                        destination = "anonymized",
+                                        passengerId = "anonymized"
+                                    )
                                 } else {
-                                    booking.copy(status = BookingStatus.COMPLETED)
+                                    booking.copy(
+                                        status = BookingStatus.COMPLETED,
+                                        origin = "anonymized",
+                                        destination = "anonymized",
+                                        passengerId = "anonymized"
+                                    )
                                 }
                             } else if (booking.status == BookingStatus.PENDING) {
                                 booking.copy(status = BookingStatus.REJECTED)
@@ -229,9 +244,20 @@ object DemoRideStore {
                             if (isActive) {
                                 if (!booking.driverPaid) {
                                     updateBalance(booking.driverId, booking.totalPrice)
-                                    booking.copy(status = BookingStatus.COMPLETED, driverPaid = true)
+                                    booking.copy(
+                                        status = BookingStatus.COMPLETED, 
+                                        driverPaid = true,
+                                        origin = "anonymized",
+                                        destination = "anonymized",
+                                        passengerId = "anonymized"
+                                    )
                                 } else {
-                                    booking.copy(status = BookingStatus.COMPLETED)
+                                    booking.copy(
+                                        status = BookingStatus.COMPLETED,
+                                        origin = "anonymized",
+                                        destination = "anonymized",
+                                        passengerId = "anonymized"
+                                    )
                                 }
                             } else if (booking.status == BookingStatus.PENDING) {
                                 booking.copy(status = BookingStatus.REJECTED)
@@ -383,8 +409,8 @@ object DemoRideStore {
         }.toMutableList()
     }
 
-    fun observePassengerBookings(passengerId: String): Flow<List<Booking>> =
-        bookingsFlow.map { bookings -> bookings.filter { it.passengerId == passengerId } }
+    fun observePassengerBookings(hashedPassengerId: String): Flow<List<Booking>> =
+        bookingsFlow.map { bookings -> bookings.filter { it.hashedPassengerId == hashedPassengerId } }
 
     fun observeRideBookings(rideId: String): Flow<List<Booking>> =
         bookingsFlow.map { bookings -> bookings.filter { it.rideId == rideId } }

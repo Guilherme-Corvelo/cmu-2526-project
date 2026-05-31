@@ -458,7 +458,7 @@ class RideDetailActivity : AppCompatActivity() {
     private fun populateUI(ride: Ride, rideId: String) {
         title = "Ride detail"
         tvDriverName.text = ride.driverName
-        tvRating.text     = "★ %.1f  (${ride.driverRating})" .format(ride.driverRating)
+        tvRating.text     = "★ %.1f".format(ride.driverRating)
         tvRoute.text      = "${ride.origin}  →  ${ride.destination}"
         tvDeparture.text  = ride.departureTime?.let { dateFmt.format(it) } ?: "—"
         tvSeats.text      = "${ride.seatsAvailable} of ${ride.seatsTotal} seats available"

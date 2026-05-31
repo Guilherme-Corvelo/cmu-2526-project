@@ -29,7 +29,10 @@ class FirebaseDataSource(
     override suspend fun signIn(email: String, password: String): com.google.firebase.auth.AuthResult? = auth.signInWithEmailAndPassword(email, password).await()
     override suspend fun register(email: String, password: String): com.google.firebase.auth.AuthResult? = auth.createUserWithEmailAndPassword(email, password).await()
     override fun signOut() = auth.signOut()
-    override suspend fun createUserProfile(user: User) { usersCol.document(user.uid).set(user).await() }
+    override suspend fun createUserProfile(user: User) { 
+        val hashedUid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(user.uid)
+        usersCol.document(user.uid).set(user.copy(hashedUid = hashedUid)).await() 
+    }
     override suspend fun getUser(uid: String): User? = usersCol.document(uid).get().await().toObject(User::class.java)
 
     override suspend fun updateBalance(uid: String, delta: Double) {
@@ -202,6 +205,10 @@ class FirebaseDataSource(
                         totalEarnings += booking.totalPrice
                         tx.update(bRef, "driverPaid", true)
                     }
+                    // Privacy cleanup for completed booking
+                    tx.update(bRef, "origin", "anonymized")
+                    tx.update(bRef, "destination", "anonymized")
+                    // tx.update(bRef, "passengerId", "anonymized") // Removed to fix My Rides visibility
                 } else if (booking.status == BookingStatus.PENDING) {
                     tx.update(bRef, "status", BookingStatus.REJECTED.name)
                     // Process refund for rejected pending bookings
@@ -249,6 +256,10 @@ class FirebaseDataSource(
             if (totalEarnings > 0) {
                 tx.update(dRef, "balance", currentBal + totalEarnings)
             }
+            
+            // Privacy cleanup for ride
+            tx.update(rideRef, "origin", "anonymized")
+            tx.update(rideRef, "destination", "anonymized")
         }.await()
     }
 
@@ -431,6 +442,7 @@ class FirebaseDataSource(
     }
 
     override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> = callbackFlow {
+        // Query by passengerId instead of hashedPid to ensure user can see their own history
         val listener = bookingsCol.whereEqualTo("passengerId", passengerId)
             .addSnapshotListener { snap, err -> if (err != null) close(err) else trySend(snap?.toObjects(Booking::class.java)?.filterNotNull() ?: emptyList()) }
         activeListeners.add(listener)
@@ -481,6 +493,7 @@ class FirebaseDataSource(
     }
 
     override fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>> = callbackFlow {
+        // Query by passengerId instead of hashedPid to ensure user can see their own history
         val listener = requestsCol.whereEqualTo("passengerId", passengerId)
             .addSnapshotListener { snap, err ->
                 if (err != null) close(err)
@@ -602,6 +615,12 @@ class FirebaseDataSource(
                 tx.update(ref, "passengerRefunded", true)
             }
 
+            if (status == RequestStatus.COMPLETED) {
+                tx.update(ref, "origin", "anonymized")
+                tx.update(ref, "destination", "anonymized")
+                // tx.update(ref, "passengerId", "anonymized") // Removed to fix My Rides visibility
+            }
+
             tx.update(ref, "status", status.name)
         }.await()
     }
@@ -668,9 +687,11 @@ class FirebaseDataSource(
         }.await()
     }
 
-    override suspend fun submitReview(review: Review) {
-        if (review.requestId.isBlank()) return
-        val uid = currentUid ?: return
+    override suspend fun submitReview(review: Review): String? {
+        if (review.requestId.isBlank()) return null
+        val uid = currentUid ?: return null
+
+        var targetRideId: String? = null
 
         db.runTransaction { tx ->
             // 1. ALL READS
@@ -682,35 +703,74 @@ class FirebaseDataSource(
             
             if (reqSnap.exists()) {
                 val driverId = reqSnap.getString("driverId")
+                val passengerId = reqSnap.getString("passengerId")
                 fieldToUpdate = if (uid == driverId) "passengerReviewed" else "driverReviewed"
                 docToUpdate = reqRef
+                targetRideId = review.requestId // For requests, rideId is requestId
+                
+                // Ensure review has correct IDs
+                val finalDriverId = driverId ?: ""
+                val finalPassengerId = passengerId ?: ""
+                
+                val reviewRef = reviewsCol.document()
+                val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(finalPassengerId)
+                
+                tx.set(reviewRef, review.copy(
+                    id = reviewRef.id,
+                    driverId = finalDriverId,
+                    passengerId = finalPassengerId,
+                    hashedPassengerId = hashedPid,
+                    rideId = targetRideId ?: ""
+                ))
             } else {
                 val bookRef = bookingsCol.document(review.requestId)
                 val bookSnap = tx.get(bookRef)
                 if (bookSnap.exists()) {
                     val driverId = bookSnap.getString("driverId")
+                    val passengerId = bookSnap.getString("passengerId")
                     fieldToUpdate = if (uid == driverId) "passengerReviewed" else "driverReviewed"
                     docToUpdate = bookRef
+                    targetRideId = bookSnap.getString("rideId")
+                    
+                    val finalDriverId = driverId ?: ""
+                    val finalPassengerId = passengerId ?: ""
+                    
+                    val reviewRef = reviewsCol.document()
+                    val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(finalPassengerId)
+                    
+                    tx.set(reviewRef, review.copy(
+                        id = reviewRef.id,
+                        driverId = finalDriverId,
+                        passengerId = finalPassengerId,
+                        hashedPassengerId = hashedPid,
+                        rideId = targetRideId ?: ""
+                    ))
                 }
             }
 
-            // 2. ALL WRITES
-            val reviewRef = reviewsCol.document()
-            val passengerId = review.passengerId ?: ""
-            val hashedPid = if (passengerId.isNotBlank()) pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(passengerId) else ""
-            
-            tx.set(reviewRef, review.copy(
-                id = reviewRef.id,
-                hashedPassengerId = hashedPid
-            ))
-            
             if (docToUpdate != null && fieldToUpdate != null) {
                 tx.update(docToUpdate, fieldToUpdate, true)
             }
         }.await()
+        
+        targetRideId?.let { rideId ->
+            try {
+                processRideReputation(rideId)
+            } catch (e: Exception) {
+                android.util.Log.e("FirebaseDataSource", "Error processing reputation for ride $rideId", e)
+            }
+        }
+        
+        return targetRideId
     }
 
     override fun observeReviewsForUser(userId: String): Flow<List<Review>> = callbackFlow {
+        // Query reviews by driverId (to see what others said about this driver)
+        // OR by passengerId (to see reviews left by this passenger)
+        // We'll use a listener that fetches reviews where either driverId OR passengerId matches.
+        // Since Firestore doesn't support OR across different fields easily without composite indices,
+        // we'll observe by driverId for the profile reputation. 
+        // Note: For reputation/rating logic, driverId is the primary target.
         val listener = reviewsCol.whereEqualTo("driverId", userId)
             .addSnapshotListener { snap, err ->
                 if (err != null) {
@@ -769,7 +829,10 @@ class FirebaseDataSource(
     }
 
     override fun clearListeners() {
-        activeListeners.forEach { it.remove() }
+        val listeners = ArrayList(activeListeners)
         activeListeners.clear()
+        listeners.forEach { 
+            try { it.remove() } catch (e: Exception) { android.util.Log.e("FirebaseDataSource", "Error removing listener", e) }
+        }
     }
 }

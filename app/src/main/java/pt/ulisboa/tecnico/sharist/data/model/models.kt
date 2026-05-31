@@ -9,6 +9,7 @@ import java.util.Date
 
 data class User(
     @DocumentId val uid: String = "",
+    val hashedUid: String = "",
     val displayName: String = "",
     val email: String = "",
     val photoUrl: String? = null,
@@ -65,6 +66,7 @@ data class Review(
     val driverId: String = "",
     val passengerId: String? = null,
     val hashedPassengerId: String = "",
+    val rideId: String = "",
     val rating: Int = 5,
     val comment: String = "",
     val isOutlier: Boolean = false,
