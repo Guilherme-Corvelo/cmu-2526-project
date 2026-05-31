@@ -456,7 +456,8 @@ class RideRequestRepository(
     }
 
     suspend fun createRequest(request: RideRequest): Result<String> {
-        val activeRequests = local.requestDao.getActivePassengerRequests(request.passengerId)
+        val passengerId = request.passengerId ?: return Result.failure(IllegalArgumentException("Passenger ID cannot be null when creating a request"))
+        val activeRequests = local.requestDao.getActivePassengerRequests(passengerId)
         if (activeRequests.isNotEmpty()) {
             return Result.failure(IllegalStateException("You already have an active ride request. Cancel it or wait for completion."))
         }

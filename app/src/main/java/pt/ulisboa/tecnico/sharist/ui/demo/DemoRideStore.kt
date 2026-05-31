@@ -292,7 +292,8 @@ object DemoRideStore {
         val id = booking.id.ifBlank { "mock_booking_${UUID.randomUUID()}" }
         
         // Upfront payment
-        updateBalance(booking.passengerId, -booking.totalPrice)
+        val pId = booking.passengerId ?: "unknown"
+        updateBalance(pId, -booking.totalPrice)
         
         val finalBooking = booking.copy(
             id = id,
@@ -343,10 +344,9 @@ object DemoRideStore {
                 } else if ((status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) && 
                     booking.passengerPaid && !booking.passengerRefunded) {
                     
-                    val uid = currentUid
-                    // Only the passenger can trigger their own refund
-                    if (uid == booking.passengerId) {
-                        updateBalance(booking.passengerId, booking.totalPrice)
+                    val pId = booking.passengerId
+                    if (pId != null) {
+                        updateBalance(pId, booking.totalPrice)
                         updated = updated.copy(passengerRefunded = true)
                     }
                 } else if (status == BookingStatus.CANCELLED && (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)) {

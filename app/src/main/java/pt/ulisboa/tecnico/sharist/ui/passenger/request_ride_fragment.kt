@@ -88,7 +88,7 @@ class RequestRideFragment : Fragment() {
                 mapView.controller.animateTo(origin)
                 mapView.controller.setZoom(14.0)
                 tvMapStatus.text = "Route preview ready. This request can be matched on the map."
-                
+
                 val price = PriceCalculator.estimate(etOrigin.text.toString().trim(), etDestination.text.toString().trim())
                 tvEstimatedPrice.text = "Estimated Price: €${String.format("%.2f", price)}"
                 tvEstimatedPrice.visibility = View.VISIBLE

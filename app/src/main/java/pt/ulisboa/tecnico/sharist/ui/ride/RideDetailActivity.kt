@@ -400,8 +400,8 @@ class RideDetailActivity : AppCompatActivity() {
                             val cond = ride.weatherCondition
                             val thresholdValue = cond.threshold ?: (if (cond.type == WeatherType.TOO_HOT) 35.0 else 5.0)
                             val conditionDetail = when (cond.type) {
-                                WeatherType.TOO_HOT -> "high temperatures (Threshold for Hot temperatures: ${thresholdValue}°C)"
-                                WeatherType.TOO_COLD -> "low temperatures (Threshold for Cold temperatures: ${thresholdValue}°C)"
+                                WeatherType.TOO_HOT -> "high temperatures (Threshold: ${thresholdValue}°C)"
+                                WeatherType.TOO_COLD -> "low temperatures (Threshold: ${thresholdValue}°C)"
                                 WeatherType.RAIN -> "rain"
                                 else -> "weather conditions"
                             }
@@ -445,7 +445,12 @@ class RideDetailActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             lifecycleScope.launch {
-                showPassengerProfileDialog(booking.passengerId, booking.passengerName)
+                val pId = booking.passengerId
+                if (pId != null) {
+                    showPassengerProfileDialog(pId, booking.passengerName)
+                } else {
+                    Toast.makeText(this@RideDetailActivity, "User profile is anonymized for privacy.", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

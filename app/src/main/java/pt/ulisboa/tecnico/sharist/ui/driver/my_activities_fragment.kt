@@ -126,12 +126,12 @@ class MyActiveRidesFragment : Fragment() {
             },
             onRideCompleted = { item ->
                 val (passengerName, passengerId, id) = when (item) {
-                    is RideRequest -> Triple(item.passengerName, item.passengerId, item.id)
-                    is Booking -> Triple(item.passengerName, item.passengerId, item.id)
+                    is RideRequest -> Triple(item.passengerName, item.passengerId ?: "anonymized", item.id)
+                    is Booking -> Triple(item.passengerName, item.passengerId ?: "anonymized", item.id)
                     is RideJourney -> {
                         val toRate = item.bookings.firstOrNull { !it.passengerReviewed }
                         if (toRate != null) {
-                            Triple(toRate.passengerName, toRate.passengerId, toRate.id)
+                            Triple(toRate.passengerName, toRate.passengerId ?: "anonymized", toRate.id)
                         } else return@ActiveRideAdapter
                     }
                     else -> return@ActiveRideAdapter
@@ -334,16 +334,20 @@ class ActiveRideAdapter(
             is RideRequest -> {
                 val start = sb.length
                 sb.append(item.passengerName)
-                sb.setSpan(object : android.text.style.ClickableSpan() {
-                    override fun onClick(v: View) { onViewProfile(item.passengerId) }
-                }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                item.passengerId?.let { pId ->
+                    sb.setSpan(object : android.text.style.ClickableSpan() {
+                        override fun onClick(v: View) { onViewProfile(pId) }
+                    }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
             }
             is Booking -> {
                 val start = sb.length
                 sb.append(item.passengerName)
-                sb.setSpan(object : android.text.style.ClickableSpan() {
-                    override fun onClick(v: View) { onViewProfile(item.passengerId) }
-                }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                item.passengerId?.let { pId ->
+                    sb.setSpan(object : android.text.style.ClickableSpan() {
+                        override fun onClick(v: View) { onViewProfile(pId) }
+                    }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
             }
             is RideJourney -> {
                 if (item.bookings.isEmpty()) {
@@ -352,9 +356,11 @@ class ActiveRideAdapter(
                     item.bookings.forEachIndexed { index, booking ->
                         val start = sb.length
                         sb.append(booking.passengerName)
-                        sb.setSpan(object : android.text.style.ClickableSpan() {
-                            override fun onClick(v: View) { onViewProfile(booking.passengerId) }
-                        }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        booking.passengerId?.let { pId ->
+                            sb.setSpan(object : android.text.style.ClickableSpan() {
+                                override fun onClick(v: View) { onViewProfile(pId) }
+                            }, start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
                         if (index < item.bookings.size - 1) sb.append(", ")
                     }
                 }

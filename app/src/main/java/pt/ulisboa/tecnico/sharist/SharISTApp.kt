@@ -47,7 +47,7 @@ class SharISTApp : Application() {
                 } else {
                     FirebaseApp.getInstance()
                 }
-                
+
                 if (app != null) {
                     FirebaseDataSource(FirebaseAuth.getInstance(), FirebaseFirestore.getInstance())
                 } else null
@@ -81,7 +81,10 @@ class SharISTApp : Application() {
             override val currentUid: String? get() = delegate.currentUid
             override suspend fun signIn(email: String, pass: String) = delegate.signIn(email, pass)
             override suspend fun register(email: String, pass: String) = delegate.register(email, pass)
-            override fun signOut() = delegate.signOut()
+            override fun signOut() {
+                firebaseInstance.value?.signOut()
+                mockInstance.value.signOut()
+            }
             override suspend fun createUserProfile(user: User) = delegate.createUserProfile(user)
             override suspend fun getUser(uid: String) = delegate.getUser(uid)
             override suspend fun updateBalance(uid: String, delta: Double) = delegate.updateBalance(uid, delta)
@@ -112,7 +115,12 @@ class SharISTApp : Application() {
             override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) =
                 delegate.acceptRequest(requestId, driverId, driverName, driverRating)
 
-            override fun clearListeners() = delegate.clearListeners()
+            override suspend fun processRideReputation(rideId: String) = delegate.processRideReputation(rideId)
+
+            override fun clearListeners() {
+                firebaseInstance.value?.clearListeners()
+                mockInstance.value.clearListeners()
+            }
         }
     }
 

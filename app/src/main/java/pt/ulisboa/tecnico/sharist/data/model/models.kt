@@ -18,7 +18,9 @@ data class User(
     val driver: Boolean = false,
     val vehicleType: VehicleType = VehicleType.NONE,
     val vehiclePlate: String = "",
-    val preferredPassengerRating: Double = 0.0
+    val preferredPassengerRating: Double = 0.0,
+    val trustScore: Double = 1.0, // Scale 0.0 to 1.0
+    val totalRidesParticipated: Int = 0
 )
 
 enum class VehicleType(val displayName: String, val maxSeats: Int) {
@@ -31,7 +33,8 @@ enum class VehicleType(val displayName: String, val maxSeats: Int) {
 
 data class RideRequest(
     @DocumentId val id: String = "",
-    val passengerId: String = "",
+    val passengerId: String? = null, // Can be anonymized post-ride
+    val hashedPassengerId: String = "",
     val passengerName: String = "",
     val origin: String = "",
     val destination: String = "",
@@ -41,6 +44,7 @@ data class RideRequest(
     val driverName: String? = null,
     val driverRating: Double = 5.0,
     val status: RequestStatus = RequestStatus.OPEN,
+    val reviewed: Boolean = false, // Shared flag for backward compatibility or simple UI
     val passengerReviewed: Boolean = false,
     val driverReviewed: Boolean = false,
     val passengerPaid: Boolean = false,
@@ -59,9 +63,11 @@ data class Review(
     @DocumentId val id: String = "",
     val requestId: String = "",
     val driverId: String = "",
-    val passengerId: String = "",
+    val passengerId: String? = null,
+    val hashedPassengerId: String = "",
     val rating: Int = 5,
     val comment: String = "",
+    val isOutlier: Boolean = false,
     @ServerTimestamp val createdAt: Date? = null
 )
 
@@ -107,7 +113,8 @@ data class RideFilter(
 data class Booking(
     @DocumentId val id: String = "",
     val rideId: String = "",
-    val passengerId: String = "",
+    val passengerId: String? = null, // Can be anonymized post-ride
+    val hashedPassengerId: String = "",
     val passengerName: String = "",
     val passengerRating: Double = 5.0,
     val passengerPhotoUrl: String? = null,
@@ -121,6 +128,7 @@ data class Booking(
     val driverName: String = "",
     val driverId: String = "",
     val recurring: Boolean = false,
+    val reviewed: Boolean = false, // Shared flag
     val passengerReviewed: Boolean = false,
     val driverReviewed: Boolean = false,
     val passengerPaid: Boolean = false,
@@ -178,10 +186,10 @@ fun RideEntity.toDomain() = Ride(
 )
 
 @Entity(tableName = "requests_cache")
-
 data class RideRequestEntity(
     @PrimaryKey val id: String,
-    val passengerId: String,
+    val passengerId: String?,
+    val hashedPassengerId: String = "",
     val passengerName: String,
     val origin: String,
     val destination: String,
@@ -201,7 +209,7 @@ data class RideRequestEntity(
 )
 
 fun RideRequest.toEntity() = RideRequestEntity(
-    id, passengerId, passengerName, origin, destination,
+    id, passengerId, hashedPassengerId, passengerName, origin, destination,
     requestedTime?.time ?: 0L, estimatedPrice,
     driverId, driverName, driverRating, status.name, passengerReviewed, driverReviewed,
     weatherCondition.type.name, weatherCondition.threshold, isPending,
@@ -211,6 +219,7 @@ fun RideRequest.toEntity() = RideRequestEntity(
 fun RideRequestEntity.toDomain() = RideRequest(
     id = id,
     passengerId = passengerId,
+    hashedPassengerId = hashedPassengerId,
     passengerName = passengerName,
     origin = origin,
     destination = destination,
@@ -234,7 +243,8 @@ fun RideRequestEntity.toDomain() = RideRequest(
 data class BookingEntity(
     @PrimaryKey val id: String,
     val rideId: String,
-    val passengerId: String,
+    val passengerId: String?,
+    val hashedPassengerId: String = "",
     val passengerName: String,
     val passengerRating: Double,
     val passengerPhotoUrl: String?,
@@ -260,7 +270,7 @@ data class BookingEntity(
 )
 
 fun Booking.toEntity() = BookingEntity(
-    id, rideId, passengerId, passengerName, passengerRating, passengerPhotoUrl,
+    id, rideId, passengerId, hashedPassengerId, passengerName, passengerRating, passengerPhotoUrl,
     seatsRequested, totalPrice, status.name, createdAt?.time ?: System.currentTimeMillis(),
     origin, destination, departureTime?.time ?: 0L, driverName, driverId,
     recurring, passengerReviewed, driverReviewed, passengerPaid, driverPaid, passengerRefunded,
@@ -268,7 +278,8 @@ fun Booking.toEntity() = BookingEntity(
 )
 
 fun BookingEntity.toDomain() = Booking(
-    id = id, rideId = rideId, passengerId = passengerId, passengerName = passengerName,
+    id = id, rideId = rideId, passengerId = passengerId, hashedPassengerId = hashedPassengerId,
+    passengerName = passengerName,
     passengerRating = passengerRating, passengerPhotoUrl = passengerPhotoUrl,
     seatsRequested = seatsRequested, totalPrice = totalPrice, status = BookingStatus.valueOf(status),
     createdAt = Date(createdAtMs), origin = origin, destination = destination,

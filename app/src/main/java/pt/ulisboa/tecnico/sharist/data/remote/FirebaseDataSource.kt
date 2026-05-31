@@ -115,7 +115,7 @@ class FirebaseDataSource(
                     bookingsToCancel.add(doc.reference to booking)
 
                     if (booking.passengerPaid && !booking.passengerRefunded) {
-                        val pId = booking.passengerId
+                        val pId = booking.passengerId ?: continue
                         if (!passengerBalances.containsKey(pId)) {
                             val pRef = usersCol.document(pId)
                             val pSnap = tx.get(pRef)
@@ -132,7 +132,7 @@ class FirebaseDataSource(
                 tx.update(bRef, "status", BookingStatus.CANCELLED.name)
 
                 if (booking.passengerPaid && !booking.passengerRefunded) {
-                    val pId = booking.passengerId
+                    val pId = booking.passengerId ?: continue
                     val currentBal = passengerBalances[pId] ?: 0.0
                     val newBal = currentBal + booking.totalPrice
                     
@@ -174,7 +174,7 @@ class FirebaseDataSource(
 
                 if (booking.status == BookingStatus.PENDING) {
                     if (booking.passengerPaid && !booking.passengerRefunded) {
-                        val pId = booking.passengerId
+                        val pId = booking.passengerId ?: continue
                         if (!passengerBalances.containsKey(pId)) {
                             val pRef = usersCol.document(pId)
                             val pSnap = tx.get(pRef)
@@ -206,7 +206,7 @@ class FirebaseDataSource(
                     tx.update(bRef, "status", BookingStatus.REJECTED.name)
                     // Process refund for rejected pending bookings
                     if (booking.passengerPaid && !booking.passengerRefunded) {
-                        val pId = booking.passengerId
+                        val pId = booking.passengerId ?: continue
                         val pRef = usersCol.document(pId)
                         val pBal = passengerBalances[pId] ?: 0.0
                         val newBal = pBal + booking.totalPrice
@@ -322,15 +322,19 @@ class FirebaseDataSource(
         
         db.runTransaction { tx ->
             // 1. Deduct balance from passenger upfront
-            val pRef = usersCol.document(booking.passengerId)
+            val passengerId = booking.passengerId ?: throw Exception("Passenger ID is required")
+            val pRef = usersCol.document(passengerId)
             val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
             if (pBal < booking.totalPrice) throw Exception("Insufficient balance")
             
             tx.update(pRef, "balance", pBal - booking.totalPrice)
             
             // 2. Create the booking as paid
+            val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(passengerId)
             val toSave = booking.copy(
                 id = bookingId,
+                passengerId = passengerId, // Ensure it's set
+                hashedPassengerId = hashedPid,
                 passengerPaid = true,
                 passengerRefunded = false
             )
@@ -378,7 +382,8 @@ class FirebaseDataSource(
                 }
             } else if ((status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) && 
                 booking.passengerPaid && !booking.passengerRefunded) {
-                val pRef = usersCol.document(booking.passengerId)
+                val pId = booking.passengerId ?: return@runTransaction
+                val pRef = usersCol.document(pId)
                 val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
                 passengerToRefund = pRef to pBal
             }
@@ -513,15 +518,19 @@ class FirebaseDataSource(
         
         db.runTransaction { tx ->
             // 1. Deduct balance from passenger upfront
-            val pRef = usersCol.document(request.passengerId)
+            val passengerId = request.passengerId ?: throw Exception("Passenger ID is required")
+            val pRef = usersCol.document(passengerId)
             val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
             if (pBal < request.estimatedPrice) throw Exception("Insufficient balance")
             
             tx.update(pRef, "balance", pBal - request.estimatedPrice)
             
             // 2. Create the request as paid
+            val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(passengerId)
             val toSave = request.copy(
                 id = requestId,
+                passengerId = passengerId, // Ensure it's set
+                hashedPassengerId = hashedPid,
                 passengerPaid = true,
                 passengerRefunded = false,
                 createdAt = null // Firestore @ServerTimestamp
@@ -559,7 +568,8 @@ class FirebaseDataSource(
                     driverToPay = dRef to dBal
                 }
             } else if (status == RequestStatus.CANCELLED && req.passengerPaid && !req.passengerRefunded) {
-                val pRef = usersCol.document(req.passengerId)
+                val pId = req.passengerId ?: return@runTransaction
+                val pRef = usersCol.document(pId)
                 val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
                 passengerToRefund = pRef to pBal
             }
@@ -632,12 +642,14 @@ class FirebaseDataSource(
             val req = tx.get(ref).toObject(RideRequest::class.java) ?: error("Request not found")
             if (req.status != RequestStatus.OPEN) error("Request already taken")
 
+            val passengerId = req.passengerId ?: "unknown"
+
             // Convert Request to Booking
             val bookingRef = bookingsCol.document()
             val booking = Booking(
                 id = bookingRef.id,
                 rideId = "requested_${req.id}", // Marker for requests-based rides
-                passengerId = req.passengerId,
+                passengerId = passengerId,
                 passengerName = req.passengerName,
                 passengerRating = 5.0, // Should be fetched from user
                 seatsRequested = 1,
@@ -684,7 +696,13 @@ class FirebaseDataSource(
 
             // 2. ALL WRITES
             val reviewRef = reviewsCol.document()
-            tx.set(reviewRef, review.copy(id = reviewRef.id))
+            val passengerId = review.passengerId ?: ""
+            val hashedPid = if (passengerId.isNotBlank()) pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(passengerId) else ""
+            
+            tx.set(reviewRef, review.copy(
+                id = reviewRef.id,
+                hashedPassengerId = hashedPid
+            ))
             
             if (docToUpdate != null && fieldToUpdate != null) {
                 tx.update(docToUpdate, fieldToUpdate, true)
@@ -708,6 +726,46 @@ class FirebaseDataSource(
             listener.remove()
             activeListeners.remove(listener)
         }
+    }
+
+    override suspend fun processRideReputation(rideId: String) {
+        // Implementation for outlier detection and reputation update
+        val rideRef = ridesCol.document(rideId)
+        val ride = rideRef.get().await().toObject(Ride::class.java) ?: return
+        val driverId = ride.driverId
+
+        // Fetch reviews outside the transaction to avoid query restrictions
+        val reviews = reviewsCol.whereEqualTo("driverId", driverId).get().await().toObjects(Review::class.java)
+        if (reviews.isEmpty()) return
+
+        db.runTransaction { tx ->
+            val ratings = reviews.map { it.rating.toDouble() }
+            val stdDev = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.calculateStdDev(ratings)
+
+            var validSum = 0.0
+            var validCount = 0
+            
+            for (review in reviews) {
+                val isOutlier = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.isOutlier(review.rating.toDouble(), ratings)
+                if (isOutlier != review.isOutlier) {
+                    tx.update(reviewsCol.document(review.id), "isOutlier", isOutlier)
+                }
+                if (!isOutlier) {
+                    validSum += review.rating.toDouble()
+                    validCount++
+                }
+            }
+
+            if (validCount > 0) {
+                val newRating = validSum / validCount
+                val userRef = usersCol.document(driverId)
+                tx.update(userRef, mapOf(
+                    "rating" to newRating,
+                    "ratingCount" to validCount,
+                    "trustScore" to (validCount.toDouble() / (validCount + 5)) // Simple trust score formula
+                ))
+            }
+        }.await()
     }
 
     override fun clearListeners() {

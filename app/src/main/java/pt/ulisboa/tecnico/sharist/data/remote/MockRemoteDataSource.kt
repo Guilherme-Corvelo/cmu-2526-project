@@ -37,7 +37,8 @@ class MockRemoteDataSource : RemoteDataSource {
     }
 
     override suspend fun submitReview(review: Review) {
-        DemoRideStore.addReview(review)
+        val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(review.passengerId ?: "")
+        DemoRideStore.addReview(review.copy(hashedPassengerId = hashedPid))
     }
 
     override fun observeReviewsForUser(userId: String): Flow<List<Review>> =
@@ -67,7 +68,10 @@ class MockRemoteDataSource : RemoteDataSource {
         DemoRideStore.decrementSeat(rideId)
     }
 
-    override suspend fun createBooking(booking: Booking): String = DemoRideStore.createBooking(booking)
+    override suspend fun createBooking(booking: Booking): String {
+        val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(booking.passengerId ?: "")
+        return DemoRideStore.createBooking(booking.copy(hashedPassengerId = hashedPid))
+    }
 
     override suspend fun updateBookingStatus(bookingId: String, status: BookingStatus) {
         DemoRideStore.updateBookingStatus(bookingId, status, currentUid)
@@ -95,12 +99,14 @@ class MockRemoteDataSource : RemoteDataSource {
     override suspend fun createRequest(request: RideRequest): String {
         val id = request.id.ifBlank { "mock_req_${UUID.randomUUID()}" }
         // Upfront payment for the request
-        DemoRideStore.updateBalance(request.passengerId, -request.estimatedPrice)
+        DemoRideStore.updateBalance(request.passengerId ?: "", -request.estimatedPrice)
         
+        val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(request.passengerId ?: "")
         val finalRequest = request.copy(
             id = id,
             passengerPaid = true,
-            passengerRefunded = false
+            passengerRefunded = false,
+            hashedPassengerId = hashedPid
         )
         DemoRequestStore.requests.value = (listOf(finalRequest) + DemoRequestStore.requests.value)
         return id
@@ -137,7 +143,7 @@ class MockRemoteDataSource : RemoteDataSource {
                     } else if (status == RequestStatus.CANCELLED && updated.passengerPaid && !updated.passengerRefunded) {
                         // Passenger gets refund
                         if (currentUid == updated.passengerId) {
-                            DemoRideStore.updateBalance(updated.passengerId, updated.estimatedPrice)
+                            DemoRideStore.updateBalance(updated.passengerId ?: "", updated.estimatedPrice)
                             updated = updated.copy(passengerRefunded = true)
                         }
                     }
@@ -178,6 +184,10 @@ class MockRemoteDataSource : RemoteDataSource {
                 driverRating = driverRating
             ) else it
         }
+    }
+
+    override suspend fun processRideReputation(rideId: String) {
+        // Mock implementation for outlier detection could be added here if needed for Demo
     }
 
     override fun clearListeners() {
