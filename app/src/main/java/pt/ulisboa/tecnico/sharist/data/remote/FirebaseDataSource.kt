@@ -228,7 +228,8 @@ class FirebaseDataSource(
                         passengerReviewed = false,
                         driverReviewed = false,
                         driverPaid = false,
-                        passengerRefunded = false
+                        passengerRefunded = false,
+                        weatherCondition = booking.weatherCondition // Carry over weather preferences
                     )
                     tx.set(nextBookingRef, nextBooking)
                 }
@@ -630,6 +631,27 @@ class FirebaseDataSource(
             val ref = requestsCol.document(requestId)
             val req = tx.get(ref).toObject(RideRequest::class.java) ?: error("Request not found")
             if (req.status != RequestStatus.OPEN) error("Request already taken")
+
+            // Convert Request to Booking
+            val bookingRef = bookingsCol.document()
+            val booking = Booking(
+                id = bookingRef.id,
+                rideId = "requested_${req.id}", // Marker for requests-based rides
+                passengerId = req.passengerId,
+                passengerName = req.passengerName,
+                passengerRating = 5.0, // Should be fetched from user
+                seatsRequested = 1,
+                totalPrice = req.estimatedPrice,
+                status = BookingStatus.ACCEPTED,
+                origin = req.origin,
+                destination = req.destination,
+                departureTime = req.requestedTime,
+                driverName = driverName,
+                driverId = driverId,
+                weatherCondition = req.weatherCondition
+            )
+            
+            tx.set(bookingRef, booking)
             tx.update(ref, mapOf("status" to RequestStatus.ACCEPTED.name, "driverId" to driverId, "driverName" to driverName, "driverRating" to driverRating))
         }.await()
     }

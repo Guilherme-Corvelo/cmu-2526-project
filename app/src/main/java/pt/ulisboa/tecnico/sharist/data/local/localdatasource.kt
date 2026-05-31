@@ -105,7 +105,7 @@ interface BookingDao {
     suspend fun evictStale(cutoffMs: Long)
 }
 
-@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 10, exportSchema = false)
+@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 11, exportSchema = false)
 abstract class SharISTDatabase : RoomDatabase() {
     abstract fun requestDao(): RideRequestDao
     abstract fun rideDao(): RideDao

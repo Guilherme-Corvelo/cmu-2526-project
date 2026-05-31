@@ -41,6 +41,9 @@ class RideDetailViewModel(
     private val _isRideOwner = MutableStateFlow(false)
     val isRideOwner: StateFlow<Boolean> = _isRideOwner.asStateFlow()
 
+    private val _weatherCondition = MutableStateFlow(WeatherCondition())
+    val weatherCondition: StateFlow<WeatherCondition> = _weatherCondition.asStateFlow()
+
     sealed class BookingState {
         object Idle    : BookingState()
         object Loading : BookingState()
@@ -85,6 +88,10 @@ class RideDetailViewModel(
             }
     }
 
+    fun setWeatherCondition(condition: WeatherCondition) {
+        _weatherCondition.value = condition
+    }
+
     fun bookRide(rideId: String, seats: Int, recurring: Boolean = false) {
         val uid = userRepo.currentUid ?: run {
             _bookingState.value = BookingState.Error("Not logged in")
@@ -112,7 +119,8 @@ class RideDetailViewModel(
                 departureTime    = ride.departureTime,
                 driverName       = ride.driverName,
                 driverId         = ride.driverId,
-                recurring        = recurring
+                recurring        = recurring,
+                weatherCondition = _weatherCondition.value
             )
             rideRepo.bookRide(booking)
                 .onSuccess { id ->
@@ -235,6 +243,10 @@ class RideDetailActivity : AppCompatActivity() {
     private lateinit var btnStartRide: Button
     private lateinit var btnFinishRide: Button
     private lateinit var btnCancelRide: Button
+    private lateinit var cvWeatherPrefs: View
+    private lateinit var actvWeatherType: AutoCompleteTextView
+    private lateinit var tilThreshold: com.google.android.material.textfield.TextInputLayout
+    private lateinit var etThreshold: com.google.android.material.textfield.TextInputEditText
     private lateinit var progressBar: ProgressBar
     private var selectedPendingBooking: Booking? = null
 
@@ -272,7 +284,44 @@ class RideDetailActivity : AppCompatActivity() {
         btnStartRide     = findViewById(R.id.btn_start_ride)
         btnFinishRide    = findViewById(R.id.btn_finish_ride)
         btnCancelRide    = findViewById(R.id.btn_cancel_ride)
+        cvWeatherPrefs   = findViewById(R.id.cv_weather_prefs)
+        actvWeatherType  = findViewById(R.id.actv_weather_type)
+        tilThreshold     = findViewById(R.id.til_threshold)
+        etThreshold      = findViewById(R.id.et_threshold)
         progressBar      = findViewById(R.id.progress_bar)
+
+        setupWeatherPreferences()
+    }
+
+    private fun setupWeatherPreferences() {
+        val weatherTypes = WeatherType.values().map { it.name }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, weatherTypes)
+        actvWeatherType.setAdapter(adapter)
+        actvWeatherType.setText(WeatherType.NONE.name, false)
+
+        actvWeatherType.setOnItemClickListener { _, _, position, _ ->
+            val selectedType = WeatherType.valueOf(weatherTypes[position])
+            tilThreshold.visibility = if (selectedType == WeatherType.TOO_HOT || selectedType == WeatherType.TOO_COLD) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+            updateWeatherCondition()
+        }
+
+        etThreshold.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                updateWeatherCondition()
+            }
+        })
+    }
+
+    private fun updateWeatherCondition() {
+        val type = WeatherType.valueOf(actvWeatherType.text.toString())
+        val threshold = etThreshold.text.toString().toDoubleOrNull()
+        viewModel.setWeatherCondition(WeatherCondition(type, threshold))
     }
 
     private fun observeViewModel(rideId: String) {
@@ -291,6 +340,7 @@ class RideDetailActivity : AppCompatActivity() {
                         if (isOwner) {
                             btnBook.visibility = View.GONE
                             cbRecurringBooking.visibility = View.GONE
+                            cvWeatherPrefs.visibility = View.GONE
                             
                             btnCancelRide.visibility = if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL) View.VISIBLE else View.GONE
                             btnStartRide.visibility = if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL) View.VISIBLE else View.GONE
@@ -301,6 +351,7 @@ class RideDetailActivity : AppCompatActivity() {
                             btnStartRide.visibility = View.GONE
                             btnFinishRide.visibility = View.GONE
                             cbRecurringBooking.visibility = if (ride.periodic && !isCancelled && !isCompleted) View.VISIBLE else View.GONE
+                            cvWeatherPrefs.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
                         }
                     }
                 }
@@ -341,10 +392,21 @@ class RideDetailActivity : AppCompatActivity() {
 
                 launch {
                     viewModel.weatherWarning.collect { warning ->
+                        val ride = viewModel.ride.value
                         cvWeatherWarning.visibility =
                             if (warning == WeatherWarning.WILL_CANCEL) View.VISIBLE else View.GONE
-                        if (warning == WeatherWarning.WILL_CANCEL) {
-                            tvWeatherText.text = "⚠ This ride may be cancelled due to weather conditions"
+                        
+                        if (warning == WeatherWarning.WILL_CANCEL && ride != null) {
+                            val cond = ride.weatherCondition
+                            val thresholdValue = cond.threshold ?: (if (cond.type == WeatherType.TOO_HOT) 35.0 else 5.0)
+                            val conditionDetail = when (cond.type) {
+                                WeatherType.TOO_HOT -> "high temperatures (Threshold for Hot temperatures: ${thresholdValue}°C)"
+                                WeatherType.TOO_COLD -> "low temperatures (Threshold for Cold temperatures: ${thresholdValue}°C)"
+                                WeatherType.RAIN -> "rain"
+                                else -> "weather conditions"
+                            }
+
+                            tvWeatherText.text = "⚠ Booking Disabled: This ride currently violates the driver's safety rules for $conditionDetail. You cannot book unless the forecast improves."
                             btnBook.isEnabled = false
                         }
                     }

@@ -42,6 +42,7 @@ class CreateRideActivity : AppCompatActivity() {
         val spinnerPeriodicity = findViewById<Spinner>(R.id.spinner_periodicity)
         val spinnerWeather = findViewById<Spinner>(R.id.spinner_weather)
         val etThreshold = findViewById<EditText>(R.id.et_threshold)
+        val tilThreshold = findViewById<View>(R.id.til_threshold)
         val btnCreate = findViewById<Button>(R.id.btn_create)
         val progressBar = findViewById<ProgressBar>(R.id.progress_bar)
 
@@ -70,7 +71,7 @@ class CreateRideActivity : AppCompatActivity() {
         spinnerWeather.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
                 val selected = WeatherType.values()[pos]
-                etThreshold.visibility = if (selected == WeatherType.TOO_HOT || selected == WeatherType.TOO_COLD) View.VISIBLE else View.GONE
+                tilThreshold.visibility = if (selected == WeatherType.TOO_HOT || selected == WeatherType.TOO_COLD) View.VISIBLE else View.GONE
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
