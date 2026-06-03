@@ -26,7 +26,9 @@ import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.FavoriteLocation
 import pt.ulisboa.tecnico.sharist.data.model.Ride
 import pt.ulisboa.tecnico.sharist.data.model.RideRequest
+import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 import android.graphics.Color
+import org.osmdroid.util.BoundingBox
 
 class RideMapFragment : Fragment() {
 
@@ -52,8 +54,6 @@ class RideMapFragment : Fragment() {
     private var displayedRequests: List<RideRequest> = emptyList()
     private var userFavorites: List<FavoriteLocation> = emptyList()
 
-    private val lisbon = GeoPoint(38.736946, -9.142685)
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_ride_map, container, false)
     }
@@ -61,13 +61,19 @@ class RideMapFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        Configuration.getInstance().setUserAgentValue(requireContext().packageName)
         Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
 
         mapView = view.findViewById(R.id.ride_map)
         mapView.setTileSource(TileSourceFactory.MAPNIK)
         mapView.setMultiTouchControls(true)
+        mapView.isHorizontalMapRepetitionEnabled = false
+        mapView.isVerticalMapRepetitionEnabled = false
+        mapView.setScrollableAreaLimitDouble(BoundingBox(85.0, 180.0, -85.0, -180.0))
+        mapView.minZoomLevel = 3.0
+
         mapView.controller.setZoom(13.0)
-        mapView.controller.setCenter(lisbon)
+        mapView.controller.setCenter(MapDemoData.lisbon)
 
         observeViewModel()
 
@@ -88,16 +94,18 @@ class RideMapFragment : Fragment() {
             }
         }
 
-        mapView.setOnLongClickListener {
-            // TODO: In a real app, show a dialog to add this point as a favorite
-            val projection = mapView.projection
-            // This is a bit complex in OSMDroid without a custom overlay, 
-            // but for now we focus on visualization.
-            false
-        }
+        // Use a MapEventsOverlay to handle long press properly in OSMDroid
+        val eventsOverlay = org.osmdroid.views.overlay.MapEventsOverlay(object : org.osmdroid.events.MapEventsReceiver {
+            override fun singleTapConfirmedHelper(p: org.osmdroid.util.GeoPoint?): Boolean = false
+            override fun longPressHelper(p: org.osmdroid.util.GeoPoint?): Boolean {
+                p?.let { showAddFavoriteDialog(it) }
+                return true
+            }
+        })
+        mapView.overlays.add(eventsOverlay)
 
         view.findViewById<Button>(R.id.btn_center_lisbon).setOnClickListener {
-            mapView.controller.animateTo(lisbon)
+            mapView.controller.animateTo(MapDemoData.lisbon)
             mapView.controller.setZoom(13.0)
         }
     }
@@ -138,6 +146,9 @@ class RideMapFragment : Fragment() {
                 title = "★ Favorite: ${fav.name}"
                 subDescription = fav.address
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                icon = androidx.core.content.res.ResourcesCompat.getDrawable(resources, R.drawable.ic_favorite_24, null)?.apply {
+                    setTint(Color.MAGENTA)
+                }
             }
             mapView.overlays.add(marker)
         }
@@ -169,6 +180,25 @@ class RideMapFragment : Fragment() {
         }
 
         mapView.invalidate()
+    }
+
+    private fun showAddFavoriteDialog(point: GeoPoint) {
+        val editText = EditText(requireContext()).apply {
+            hint = "Home, Work, etc."
+        }
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("Add Favorite Location")
+            .setMessage("Enter a name for this location:")
+            .setView(editText)
+            .setPositiveButton("Save") { _, _ ->
+                val name = editText.text.toString()
+                if (name.isNotBlank()) {
+                    viewModel.addFavorite(name, "Map Location", point.latitude, point.longitude)
+                    Toast.makeText(requireContext(), "Favorite added!", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun addPointWithRadius(center: GeoPoint, radiusMeters: Double, title: String, color: Int) {

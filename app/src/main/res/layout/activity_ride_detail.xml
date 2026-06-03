@@ -60,7 +60,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="14sp"
-            android:textColor="#666666"
+            android:textColor="@color/text_secondary"
             android:layout_marginBottom="4dp"
             android:text="Mon, 01 Jan 2026  09:00"/>
 
@@ -168,7 +168,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp"
             android:visibility="gone"
-            app:cardBackgroundColor="#FFF3CD">
+            app:cardBackgroundColor="@color/warning_background">
 
             <TextView
                 android:layout_width="match_parent"
@@ -176,7 +176,7 @@
                 android:id="@+id/tv_weather_text"
                 android:padding="12dp"
                 android:text="⚠ This ride may be cancelled due to weather conditions"
-                android:textColor="#856404"/>
+                android:textColor="@color/warning_text"/>
         </com.google.android.material.card.MaterialCardView>
 
         <ProgressBar

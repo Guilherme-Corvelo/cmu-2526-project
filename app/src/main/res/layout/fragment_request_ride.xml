@@ -42,17 +42,21 @@
                     android:textSize="13sp"/>
 
                 <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                    android:id="@+id/til_origin"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="Pickup location"
-                    android:layout_marginBottom="10dp">
+                    android:layout_marginBottom="10dp"
+                    app:endIconMode="custom"
+                    app:endIconDrawable="@drawable/ic_favorite_24"
+                    app:endIconTint="@color/magenta_star_selector">
 
                     <AutoCompleteTextView
                         android:id="@+id/et_origin"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:inputType="none" />
+                        android:completionThreshold="1" />
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <TextView
@@ -63,16 +67,20 @@
                     android:textSize="13sp"/>
 
                 <com.google.android.material.textfield.TextInputLayout
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                    android:id="@+id/til_destination"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Destination">
+                    android:hint="Destination"
+                    app:endIconMode="custom"
+                    app:endIconDrawable="@drawable/ic_favorite_24"
+                    app:endIconTint="@color/magenta_star_selector">
 
                     <AutoCompleteTextView
                         android:id="@+id/et_destination"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:inputType="none" />
+                        android:completionThreshold="1" />
                 </com.google.android.material.textfield.TextInputLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -157,9 +165,9 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:visibility="gone"
-            app:cardBackgroundColor="#FFF3CD"
+            app:cardBackgroundColor="@color/warning_background"
             app:cardCornerRadius="8dp"
-            app:strokeColor="#FFEEBA"
+            app:strokeColor="@color/warning_text"
             app:strokeWidth="1dp">
 
             <LinearLayout
@@ -172,7 +180,7 @@
                     android:id="@+id/tv_weather_warning_text"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="#856404"
+                    android:textColor="@color/warning_text"
                     android:textSize="14sp"
                     android:text="⚠ Safety Note: This request currently violates weather safety rules. It will remain active until departure time in case the forecast improves." />
             </LinearLayout>

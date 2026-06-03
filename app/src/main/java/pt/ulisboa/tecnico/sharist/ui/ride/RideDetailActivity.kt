@@ -32,6 +32,9 @@ class RideDetailViewModel(
     private val _weatherWarning = MutableStateFlow(WeatherWarning.NONE)
     val weatherWarning: StateFlow<WeatherWarning> = _weatherWarning.asStateFlow()
 
+    private val _passengerWeatherWarning = MutableStateFlow(WeatherWarning.NONE)
+    val passengerWeatherWarning: StateFlow<WeatherWarning> = _passengerWeatherWarning.asStateFlow()
+
     private val _bookingState = MutableStateFlow<BookingState>(BookingState.Idle)
     val bookingState: StateFlow<BookingState> = _bookingState.asStateFlow()
     private val _pendingBookings = MutableStateFlow<List<Booking>>(emptyList())
@@ -87,18 +90,29 @@ class RideDetailViewModel(
     }
 
     private suspend fun checkWeather(ride: Ride) {
-        if (ride.weatherCondition.type == WeatherType.NONE) return
-
-        // Map origin to nearest IPMA district (simplified: default to Lisbon)
-        val locationId = pt.ulisboa.tecnico.sharist.utils.IpmaDistrict.LISBOA
-        weatherSvc.getForecast(locationId)
-            .onSuccess { forecast ->
-                _weatherWarning.value = weatherSvc.evaluateCondition(ride.weatherCondition, forecast)
-            }
+        _weatherWarning.value = weatherSvc.checkWeatherViolation(
+            ride.origin,
+            ride.departureTime,
+            ride.weatherCondition
+        )
+        // Also re-check passenger preference against this ride
+        _passengerWeatherWarning.value = weatherSvc.checkWeatherViolation(
+            ride.origin,
+            ride.departureTime,
+            _weatherCondition.value
+        )
     }
 
     fun setWeatherCondition(condition: WeatherCondition) {
         _weatherCondition.value = condition
+        viewModelScope.launch {
+            val ride = _ride.value ?: return@launch
+            _passengerWeatherWarning.value = weatherSvc.checkWeatherViolation(
+                ride.origin,
+                ride.departureTime,
+                condition
+            )
+        }
     }
 
     fun bookRide(rideId: String, seats: Int, recurring: Boolean = false) {
@@ -341,9 +355,18 @@ class RideDetailActivity : AppCompatActivity() {
                     viewModel.ride.filterNotNull(),
                     viewModel.isRideOwner,
                     viewModel.weatherWarning,
+                    viewModel.passengerWeatherWarning,
                     viewModel.pendingBookings,
                     viewModel.joinedBookings
-                ) { ride, isOwner, warning, pending, joined ->
+                ) { flows ->
+                    val ride = flows[0] as Ride
+                    val isOwner = flows[1] as Boolean
+                    val warning = flows[2] as WeatherWarning
+                    val passengerWarning = flows[3] as WeatherWarning
+                    @Suppress("UNCHECKED_CAST")
+                    val pending = flows[4] as List<Booking>
+                    @Suppress("UNCHECKED_CAST")
+                    val joined = flows[5] as List<Booking>
                     // 1. Update core UI data
                     populateUI(ride, rideId)
 
@@ -353,17 +376,22 @@ class RideDetailActivity : AppCompatActivity() {
                     val isOpenOrFull = ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL
 
                     // 2. Weather Warning UI
-                    cvWeatherWarning.visibility = if (warning == WeatherWarning.WILL_CANCEL) View.VISIBLE else View.GONE
-                    if (warning == WeatherWarning.WILL_CANCEL) {
-                        val cond = ride.weatherCondition
-                        val thresholdValue = cond.threshold ?: (if (cond.type == WeatherType.TOO_HOT) 35.0 else 5.0)
-                        val conditionDetail = when (cond.type) {
-                            WeatherType.TOO_HOT -> "high temperatures (Threshold: ${thresholdValue}°C)"
-                            WeatherType.TOO_COLD -> "low temperatures (Threshold: ${thresholdValue}°C)"
-                            WeatherType.RAIN -> "rain"
-                            else -> "weather conditions"
+                    val showWarning = warning == WeatherWarning.WILL_CANCEL || (!isOwner && passengerWarning == WeatherWarning.WILL_CANCEL)
+                    cvWeatherWarning.visibility = if (showWarning) View.VISIBLE else View.GONE
+                    if (showWarning) {
+                        if (warning == WeatherWarning.WILL_CANCEL) {
+                            val cond = ride.weatherCondition
+                            val thresholdValue = cond.threshold ?: (if (cond.type == WeatherType.TOO_HOT) 35.0 else 5.0)
+                            val conditionDetail = when (cond.type) {
+                                WeatherType.TOO_HOT -> "high temperatures (Threshold: ${thresholdValue}°C)"
+                                WeatherType.TOO_COLD -> "low temperatures (Threshold: ${thresholdValue}°C)"
+                                WeatherType.RAIN -> "rain"
+                                else -> "weather conditions"
+                            }
+                            tvWeatherText.text = "⚠ Driver Safety Note: This ride currently violates weather safety rules for $conditionDetail. It will remain active until departure time in case the forecast improves, but booking is currently restricted."
+                        } else {
+                            tvWeatherText.text = "⚠ Your Safety Note: This ride violates your personal weather preferences for the current forecast. Booking is restricted based on your settings."
                         }
-                        tvWeatherText.text = "⚠ Safety Note: This ride currently violates weather safety rules for $conditionDetail. It will remain active until departure time in case the forecast improves, but booking is currently restricted."
                     }
 
                     // 3. Status-based Visibilities & Button Text
@@ -432,6 +460,23 @@ class RideDetailActivity : AppCompatActivity() {
                             btnStartRide.isEnabled = isOpenOrFull
                         } else {
                             btnBook.isEnabled = ride.seatsAvailable > 0 && isOpenOrFull
+                        }
+                    }
+
+                    btnBook.setOnClickListener {
+                        if (ride.seatsAvailable > 0) {
+                            if (passengerWarning == WeatherWarning.WILL_CANCEL) {
+                                AlertDialog.Builder(this@RideDetailActivity)
+                                    .setTitle("Weather Warning")
+                                    .setMessage("This ride currently violates your personal weather preferences. Do you still want to book it?")
+                                    .setPositiveButton("Book Anyway") { _, _ ->
+                                        viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
+                                    }
+                                    .setNegativeButton("Cancel", null)
+                                    .show()
+                            } else {
+                                viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
+                            }
                         }
                     }
                 }.collect()
@@ -507,9 +552,7 @@ class RideDetailActivity : AppCompatActivity() {
         )
 
         btnBook.setOnClickListener {
-            if (ride.seatsAvailable > 0) {
-                viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
-            }
+            // Handled inside flow collector to access real-time weather warnings
         }
 
         btnCancelRide.setOnClickListener {

@@ -20,6 +20,7 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.util.BoundingBox
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.RideRequest
@@ -49,10 +50,18 @@ class AvailableRequestsFragment : Fragment() {
         val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
+
+        Configuration.getInstance().setUserAgentValue(requireContext().packageName)
         Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
+
         mapView = view.findViewById(R.id.available_request_map)
         mapView.setTileSource(TileSourceFactory.MAPNIK)
         mapView.setMultiTouchControls(true)
+        mapView.isHorizontalMapRepetitionEnabled = false
+        mapView.isVerticalMapRepetitionEnabled = false
+        mapView.setScrollableAreaLimitDouble(BoundingBox(85.0, 180.0, -85.0, -180.0))
+        mapView.minZoomLevel = 3.0
+
         mapView.controller.setCenter(MapDemoData.lisbon)
         mapView.controller.setZoom(13.0)
 

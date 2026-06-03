@@ -18,6 +18,7 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.util.BoundingBox
 import androidx.navigation.fragment.NavHostFragment
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
@@ -62,10 +63,16 @@ class MyActiveRidesFragment : Fragment() {
             startActivity(Intent(requireContext(), DriverPostedRidesActivity::class.java))
         }
 
+        Configuration.getInstance().setUserAgentValue(requireContext().packageName)
         Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
         mapView = view.findViewById(R.id.driver_route_map)
         mapView.setTileSource(TileSourceFactory.MAPNIK)
         mapView.setMultiTouchControls(true)
+        mapView.isHorizontalMapRepetitionEnabled = false
+        mapView.isVerticalMapRepetitionEnabled = false
+        mapView.setScrollableAreaLimitDouble(BoundingBox(85.0, 180.0, -85.0, -180.0))
+        mapView.minZoomLevel = 3.0
+
         mapView.controller.setCenter(MapDemoData.lisbon)
         mapView.controller.setZoom(13.0)
 
@@ -448,13 +455,13 @@ class ActiveRideAdapter(
                     holder.btnAction.isEnabled = false
                 } else {
                     holder.tvDriver.text = statusText
-                    holder.tvDriver.setTextColor(android.graphics.Color.GRAY)
+                    holder.tvDriver.setTextColor(androidx.core.content.ContextCompat.getColor(holder.itemView.context, R.color.text_secondary))
                     holder.btnAction.isEnabled = true
                 }
             }
         } else {
             holder.tvDriver.text = statusText
-            holder.tvDriver.setTextColor(android.graphics.Color.GRAY)
+            holder.tvDriver.setTextColor(androidx.core.content.ContextCompat.getColor(holder.itemView.context, R.color.text_secondary))
         }
 
         holder.btnAction.visibility = if (btnText.isNotEmpty()) View.VISIBLE else View.GONE

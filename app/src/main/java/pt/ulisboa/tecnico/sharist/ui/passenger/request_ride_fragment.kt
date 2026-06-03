@@ -31,6 +31,37 @@ import java.util.*
 class RequestRideFragment : Fragment() {
     private lateinit var mapView: MapView
     private lateinit var requestRepo: RideRequestRepository
+    private var userFavorites: List<FavoriteLocation> = emptyList()
+
+    private data class LocationItem(val name: String, val isFavorite: Boolean) {
+        override fun toString(): String = name
+    }
+
+    private inner class LocationAdapter(context: android.content.Context, items: MutableList<LocationItem>) :
+        ArrayAdapter<LocationItem>(context, R.layout.item_dropdown_location, items) {
+
+        private var allItems: List<LocationItem> = ArrayList(items)
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val view = convertView ?: LayoutInflater.from(context).inflate(R.layout.item_dropdown_location, parent, false)
+            val item = getItem(position)
+            val tvName = view.findViewById<TextView>(R.id.tv_location_name)
+            val ivStar = view.findViewById<ImageView>(R.id.iv_favorite_star)
+
+            tvName.text = item?.name
+            ivStar.visibility = if (item?.isFavorite == true) View.VISIBLE else View.GONE
+            ivStar.setColorFilter(android.graphics.Color.MAGENTA)
+
+            return view
+        }
+
+        fun updateItems(newItems: List<LocationItem>) {
+            clear()
+            addAll(newItems)
+            allItems = ArrayList(newItems)
+            notifyDataSetChanged()
+        }
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_request_ride, container, false)
@@ -54,6 +85,15 @@ class RequestRideFragment : Fragment() {
         val btnPickTime = view.findViewById<Button>(R.id.btn_pick_time)
         val btnRequest = view.findViewById<Button>(R.id.btn_request)
         mapView = view.findViewById(R.id.request_map)
+        mapView.setTileSource(TileSourceFactory.MAPNIK)
+        mapView.setMultiTouchControls(true)
+        mapView.isHorizontalMapRepetitionEnabled = false
+        mapView.isVerticalMapRepetitionEnabled = false
+        mapView.setScrollableAreaLimitDouble(org.osmdroid.util.BoundingBox(85.0, 180.0, -85.0, -180.0))
+        mapView.minZoomLevel = 3.0
+
+        mapView.controller.setZoom(13.0)
+        mapView.controller.setCenter(MapDemoData.lisbon)
 
         val selectedTime = Calendar.getInstance()
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -92,58 +132,184 @@ class RequestRideFragment : Fragment() {
             }
         }
 
-        // Setup Locations Adapter
-        val locations = MapDemoData.allPoints().keys.toList()
-        val adapter = ArrayAdapter<String>(requireContext(), android.R.layout.simple_dropdown_item_1line, locations)
-        etOrigin.setAdapter(adapter)
-        etDestination.setAdapter(adapter)
+        fun updateRoutePreview() {
+            val originStr = etOrigin.text.toString().trim()
+            val destinationStr = etDestination.text.toString().trim()
+            
+            val originPoint = MapDemoData.pointFor(originStr) ?: userFavorites.find { it.name == originStr }?.let { org.osmdroid.util.GeoPoint(it.latitude, it.longitude) }
+            val destinationPoint = MapDemoData.pointFor(destinationStr) ?: userFavorites.find { it.name == destinationStr }?.let { org.osmdroid.util.GeoPoint(it.latitude, it.longitude) }
+            
+            mapView.overlays.clear()
 
-        etOrigin.setOnClickListener { etOrigin.showDropDown() }
-        etOrigin.setOnTouchListener { _, _ -> etOrigin.showDropDown(); false }
-        etDestination.setOnClickListener { etDestination.showDropDown() }
-        etDestination.setOnTouchListener { _, _ -> etDestination.showDropDown(); false }
+            // Re-add favorites markers
+            userFavorites.forEach { fav ->
+                val point = org.osmdroid.util.GeoPoint(fav.latitude, fav.longitude)
+                val marker = Marker(mapView).apply {
+                    position = point
+                    title = "★ Favorite: ${fav.name}"
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    icon = androidx.core.content.res.ResourcesCompat.getDrawable(resources, R.drawable.ic_favorite_24, null)?.apply {
+                        setTint(android.graphics.Color.MAGENTA)
+                    }
+                    setOnMarkerClickListener { _, _ ->
+                        if (etOrigin.isFocused) {
+                            etOrigin.setText(fav.name)
+                            etOrigin.clearFocus()
+                        } else {
+                            etDestination.setText(fav.name)
+                            etDestination.clearFocus()
+                        }
+                        true
+                    }
+                }
+                mapView.overlays.add(marker)
+            }
 
-        // Setup Map
-        Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
-        mapView.setTileSource(TileSourceFactory.MAPNIK)
-        mapView.setMultiTouchControls(true)
-        mapView.controller.setCenter(MapDemoData.lisbon)
-        mapView.controller.setZoom(13.0)
+            if (originPoint != null) {
+                mapView.overlays.add(Marker(mapView).apply { position = originPoint; title = "Pickup" })
+            }
+            if (destinationPoint != null) {
+                mapView.overlays.add(Marker(mapView).apply { position = destinationPoint; title = "Destination" })
+            }
+
+            if (originPoint != null && destinationPoint != null) {
+                val line = Polyline().apply {
+                    setPoints(listOf(originPoint, destinationPoint))
+                    outlinePaint.strokeWidth = 10f
+                }
+                mapView.overlays.add(line)
+                mapView.controller.animateTo(originPoint)
+                mapView.controller.setZoom(14.0)
+                tvMapStatus.text = "Route preview ready."
+
+                val price = PriceCalculator.estimate(originStr, destinationStr)
+                tvEstimatedPrice.text = "Estimated Price: €${String.format("%.2f", price)}"
+                tvEstimatedPrice.visibility = View.VISIBLE
+            } else if (originPoint != null) {
+                mapView.controller.animateTo(originPoint)
+                mapView.controller.setZoom(15.0)
+                tvMapStatus.text = "Origin selected. Choose destination."
+                tvEstimatedPrice.visibility = View.GONE
+            } else if (destinationPoint != null) {
+                mapView.controller.animateTo(destinationPoint)
+                mapView.controller.setZoom(15.0)
+                tvMapStatus.text = "Destination selected. Choose origin."
+                tvEstimatedPrice.visibility = View.GONE
+            } else {
+                tvMapStatus.text = "Select origin and destination from suggestions or favorites on map."
+                tvEstimatedPrice.visibility = View.GONE
+            }
+            mapView.invalidate()
+        }
 
         fun renderSelectedTime() {
             tvSelectedTime.text = "Requested time: ${timeFormat.format(selectedTime.time)}"
         }
 
-        fun updateRoutePreview() {
-            val origin = MapDemoData.pointFor(etOrigin.text.toString().trim())
-            val destination = MapDemoData.pointFor(etDestination.text.toString().trim())
-            mapView.overlays.clear()
+        // Setup Locations Adapters and Favorites
+        val demoLocations = MapDemoData.allPoints().keys.map { LocationItem(it, false) }
+        val originAdapter = LocationAdapter(requireContext(), ArrayList(demoLocations))
+        val destAdapter = LocationAdapter(requireContext(), ArrayList(demoLocations))
 
-            if (origin != null) {
-                mapView.overlays.add(Marker(mapView).apply { position = origin; title = "Pickup" })
-            }
-            if (destination != null) {
-                mapView.overlays.add(Marker(mapView).apply { position = destination; title = "Destination" })
-            }
+        etOrigin.setAdapter(originAdapter)
+        etDestination.setAdapter(destAdapter)
 
-            if (origin != null && destination != null) {
-                val line = Polyline().apply {
-                    setPoints(listOf(origin, destination))
-                    outlinePaint.strokeWidth = 10f
+        fun updateFavoriteIcons() {
+            val originText = etOrigin.text.toString()
+            val destText = etDestination.text.toString()
+            
+            val isOriginFav = userFavorites.any { it.name.equals(originText, ignoreCase = true) }
+            val isDestFav = userFavorites.any { it.name.equals(destText, ignoreCase = true) }
+            
+            view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.til_origin).findViewById<ImageView>(com.google.android.material.R.id.text_input_end_icon).isActivated = isOriginFav
+            view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.til_destination).findViewById<ImageView>(com.google.android.material.R.id.text_input_end_icon).isActivated = isDestFav
+        }
+
+        view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.til_origin).setEndIconOnClickListener {
+            val name = etOrigin.text.toString().trim()
+            if (name.isEmpty()) return@setEndIconOnClickListener
+            
+            val existing = userFavorites.find { it.name.equals(name, ignoreCase = true) }
+            if (existing != null) {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    app.favoriteLocationRepository.deleteFavorite(existing.id)
+                    Toast.makeText(context, "Removed from favorites", Toast.LENGTH_SHORT).show()
                 }
-                mapView.overlays.add(line)
-                mapView.controller.animateTo(origin)
-                mapView.controller.setZoom(14.0)
-                tvMapStatus.text = "Route preview ready. This request can be matched on the map."
-
-                val price = PriceCalculator.estimate(etOrigin.text.toString().trim(), etDestination.text.toString().trim())
-                tvEstimatedPrice.text = "Estimated Price: €${String.format("%.2f", price)}"
-                tvEstimatedPrice.visibility = View.VISIBLE
             } else {
-                tvMapStatus.text = "Route preview needs known demo From/To names (IST Alameda, Saldanha, Campo Grande, Oriente)."
-                tvEstimatedPrice.visibility = View.GONE
+                val point = MapDemoData.pointFor(name)
+                if (point == null) {
+                    Toast.makeText(context, "Cannot favorite unknown location", Toast.LENGTH_SHORT).show()
+                    return@setEndIconOnClickListener
+                }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val fav = FavoriteLocation(
+                        id = UUID.randomUUID().toString(),
+                        userId = session.uid ?: "",
+                        name = name,
+                        address = name,
+                        latitude = point.latitude,
+                        longitude = point.longitude
+                    )
+                    app.favoriteLocationRepository.addFavorite(fav)
+                    Toast.makeText(context, "Saved to favorites", Toast.LENGTH_SHORT).show()
+                }
             }
-            mapView.invalidate()
+        }
+
+        view.findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.til_destination).setEndIconOnClickListener {
+            val name = etDestination.text.toString().trim()
+            if (name.isEmpty()) return@setEndIconOnClickListener
+            
+            val existing = userFavorites.find { it.name.equals(name, ignoreCase = true) }
+            if (existing != null) {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    app.favoriteLocationRepository.deleteFavorite(existing.id)
+                    Toast.makeText(context, "Removed from favorites", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                val point = MapDemoData.pointFor(name)
+                if (point == null) {
+                    Toast.makeText(context, "Cannot favorite unknown location", Toast.LENGTH_SHORT).show()
+                    return@setEndIconOnClickListener
+                }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val fav = FavoriteLocation(
+                        id = UUID.randomUUID().toString(),
+                        userId = session.uid ?: "",
+                        name = name,
+                        address = name,
+                        latitude = point.latitude,
+                        longitude = point.longitude
+                    )
+                    app.favoriteLocationRepository.addFavorite(fav)
+                    Toast.makeText(context, "Saved to favorites", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // Show dropdown on click
+        etOrigin.setOnClickListener { etOrigin.showDropDown() }
+        etDestination.setOnClickListener { etDestination.showDropDown() }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            val uid = session.uid
+            if (uid != null) {
+                app.favoriteLocationRepository.getFavorites(uid).collect { favorites ->
+                    userFavorites = favorites
+                    val favoriteItems = favorites.map { LocationItem(it.name, true) }
+                    
+                    // Favorites first, then demo locations, distinct by name
+                    val allItems = (favoriteItems + demoLocations)
+                        .distinctBy { it.name }
+                        .sortedByDescending { it.isFavorite }
+                    
+                    originAdapter.updateItems(allItems)
+                    destAdapter.updateItems(allItems)
+
+                    updateRoutePreview()
+                    updateFavoriteIcons()
+                }
+            }
         }
 
         // Listeners
@@ -153,6 +319,7 @@ class RequestRideFragment : Fragment() {
             override fun afterTextChanged(s: Editable?) {
                 updateRoutePreview()
                 performWeatherCheck()
+                updateFavoriteIcons()
             }
         }
         etOrigin.addTextChangedListener(watcher)
@@ -195,8 +362,10 @@ class RequestRideFragment : Fragment() {
         btnRequest.setOnClickListener {
             val origin = etOrigin.text.toString().trim()
             val destination = etDestination.text.toString().trim()
-            val originPoint = MapDemoData.pointFor(origin)
-            val destinationPoint = MapDemoData.pointFor(destination)
+            
+            val originPoint = MapDemoData.pointFor(origin) ?: userFavorites.find { it.name == origin }?.let { org.osmdroid.util.GeoPoint(it.latitude, it.longitude) }
+            val destinationPoint = MapDemoData.pointFor(destination) ?: userFavorites.find { it.name == destination }?.let { org.osmdroid.util.GeoPoint(it.latitude, it.longitude) }
+            
             if (origin.isBlank() || destination.isBlank()) {
                 Toast.makeText(requireContext(), "Fill origin and destination", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
@@ -204,7 +373,7 @@ class RequestRideFragment : Fragment() {
             if (originPoint == null || destinationPoint == null) {
                 Toast.makeText(
                     requireContext(),
-                    "Use valid demo locations: IST Alameda, Saldanha, Campo Grande, or Oriente.",
+                    "Use valid demo locations or your favorites from the map.",
                     Toast.LENGTH_LONG
                 ).show()
                 return@setOnClickListener
@@ -221,7 +390,11 @@ class RequestRideFragment : Fragment() {
                 passengerId = session.uid ?: "",
                 passengerName = session.displayName ?: "Anonymous",
                 origin = origin,
+                originLat = originPoint.latitude,
+                originLng = originPoint.longitude,
                 destination = destination,
+                destinationLat = destinationPoint.latitude,
+                destinationLng = destinationPoint.longitude,
                 requestedTime = selectedTime.time,
                 estimatedPrice = estimatedPrice,
                 status = RequestStatus.OPEN,

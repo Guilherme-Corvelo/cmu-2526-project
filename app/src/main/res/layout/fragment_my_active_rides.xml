@@ -37,7 +37,8 @@
         android:id="@+id/driver_route_map"
         android:layout_width="match_parent"
         android:layout_height="190dp"
-        android:layout_marginTop="6dp"/>
+        android:layout_marginTop="6dp"
+        android:background="#DDDDDD"/>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_rides"
