@@ -54,7 +54,7 @@ class MockRemoteDataSource : RemoteDataSource {
 
     override suspend fun createRide(ride: Ride): String = DemoRideStore.createRide(ride)
 
-    override suspend fun cancelRide(rideId: String) {
+    override suspend fun cancelRide(rideId: String, reschedule: Boolean) {
         DemoRideStore.cancelRide(rideId)
     }
 
@@ -118,15 +118,15 @@ class MockRemoteDataSource : RemoteDataSource {
         return id
     }
 
-    override suspend fun cancelRequest(requestId: String) {
-        updateRequestStatus(requestId, RequestStatus.CANCELLED)
+    override suspend fun cancelRequest(requestId: String, reschedule: Boolean) {
+        updateRequestStatus(requestId, RequestStatus.CANCELLED, reschedule)
     }
 
     override suspend fun completeRequest(requestId: String) {
         updateRequestStatus(requestId, RequestStatus.COMPLETED)
     }
 
-    override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) {
+    override suspend fun updateRequestStatus(requestId: String, status: RequestStatus, reschedule: Boolean) {
         DemoRequestStore.requests.value = DemoRequestStore.requests.value.map { req ->
             if (req.id == requestId) {
                 if (status == RequestStatus.CANCELLED && currentUid == req.driverId && req.driverId != null) {
@@ -199,4 +199,22 @@ class MockRemoteDataSource : RemoteDataSource {
     override fun clearListeners() {
         // No-op for mock
     }
+
+    // Favorite Locations
+    private val mockFavorites = mutableListOf<FavoriteLocation>()
+    override fun observeFavorites(userId: String): Flow<List<FavoriteLocation>> = 
+        kotlinx.coroutines.flow.flowOf(mockFavorites.filter { it.userId == userId })
+
+    override suspend fun addFavorite(favorite: FavoriteLocation) {
+        mockFavorites.add(favorite)
+    }
+
+    override suspend fun deleteFavorite(id: String) {
+        mockFavorites.removeAll { it.id == id }
+    }
+
+    override suspend fun getAllUsers(): List<User> = DemoRideStore.getAllUsers()
+    override suspend fun getReviewsForUserSync(userId: String): List<Review> = DemoRideStore.getReviewsForUserSync(userId)
+    override suspend fun flagReviewAsOutlier(reviewId: String) { DemoRideStore.flagReviewAsOutlier(reviewId) }
+    override suspend fun updateUserTrustScore(userId: String, trustScore: Double) { DemoRideStore.updateUserTrustScore(userId, trustScore) }
 }

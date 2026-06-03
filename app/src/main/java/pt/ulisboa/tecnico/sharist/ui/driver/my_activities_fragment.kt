@@ -95,7 +95,7 @@ class MyActiveRidesFragment : Fragment() {
                                     }
                                 }
                                 val res = when (newStatus) {
-                                    RideStatus.EN_ROUTE -> rideRepo.startRide(item.ride.id)
+                                    RideStatus.EN_ROUTE -> rideRepo.startRide(item.ride.id, app.weatherService)
                                     RideStatus.COMPLETED -> rideRepo.completeRide(item.ride.id)
                                     RideStatus.CANCELLED -> rideRepo.cancelRide(item.ride.id)
                                     else -> Result.success(Unit)
@@ -413,8 +413,50 @@ class ActiveRideAdapter(
         val isCompleted = (item is RideRequest && item.status == RequestStatus.COMPLETED) || 
                           (item is Booking && item.status == BookingStatus.COMPLETED) ||
                           (item is RideJourney && item.ride.status == RideStatus.COMPLETED)
+
+        // Add weather warning if violation exists
+        val app = holder.itemView.context.applicationContext as SharISTApp
+        var weatherViolation = false
         
-        holder.tvDriver.text = statusText
+        // Use lifecycleScope for async weather check
+        val scope = (holder.itemView.context as? androidx.fragment.app.FragmentActivity)?.lifecycleScope 
+        
+        if (scope != null) {
+            scope.launch {
+                val violation = when (item) {
+                    is RideJourney -> if (item.ride.status == RideStatus.OPEN || item.ride.status == RideStatus.FULL) {
+                        app.weatherService.checkWeatherViolation(
+                            item.ride.origin,
+                            item.ride.departureTime,
+                            item.ride.weatherCondition ?: WeatherCondition(WeatherType.NONE)
+                        )
+                    } else pt.ulisboa.tecnico.sharist.utils.WeatherWarning.NONE
+                    is RideRequest -> if (item.status == RequestStatus.ACCEPTED) {
+                        app.weatherService.checkWeatherViolation(
+                            item.origin,
+                            item.requestedTime,
+                            item.weatherCondition ?: WeatherCondition(WeatherType.NONE)
+                        )
+                    } else pt.ulisboa.tecnico.sharist.utils.WeatherWarning.NONE
+                    else -> pt.ulisboa.tecnico.sharist.utils.WeatherWarning.NONE
+                }
+
+                if (violation == pt.ulisboa.tecnico.sharist.utils.WeatherWarning.WILL_CANCEL) {
+                    val warningText = "⚠ Weather Safety Alert: Forecast exceeds limits. You cannot start this ride unless conditions improve."
+                    holder.tvDriver.text = "$statusText\n\n$warningText"
+                    holder.tvDriver.setTextColor(android.graphics.Color.parseColor("#D32F2F"))
+                    holder.btnAction.isEnabled = false
+                } else {
+                    holder.tvDriver.text = statusText
+                    holder.tvDriver.setTextColor(android.graphics.Color.GRAY)
+                    holder.btnAction.isEnabled = true
+                }
+            }
+        } else {
+            holder.tvDriver.text = statusText
+            holder.tvDriver.setTextColor(android.graphics.Color.GRAY)
+        }
+
         holder.btnAction.visibility = if (btnText.isNotEmpty()) View.VISIBLE else View.GONE
         holder.btnAction.text = btnText
         holder.btnAction.setOnClickListener {

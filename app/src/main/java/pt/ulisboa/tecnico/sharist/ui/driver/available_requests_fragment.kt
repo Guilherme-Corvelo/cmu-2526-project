@@ -29,6 +29,10 @@ import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 import android.util.Log
 import kotlinx.coroutines.flow.catch
 import pt.ulisboa.tecnico.sharist.data.repository.UserRepository
+import pt.ulisboa.tecnico.sharist.utils.WeatherService
+import pt.ulisboa.tecnico.sharist.utils.WeatherWarning
+import pt.ulisboa.tecnico.sharist.data.model.WeatherType
+import pt.ulisboa.tecnico.sharist.data.model.WeatherCondition
 
 class AvailableRequestsFragment : Fragment() {
     private lateinit var mapView: MapView
@@ -56,6 +60,21 @@ class AvailableRequestsFragment : Fragment() {
             onAccept = { req ->
                 renderPreviewRoute(req)
                 viewLifecycleOwner.lifecycleScope.launch {
+                    // Check for passenger's weather rule violation
+                    val warning = WeatherService().checkWeatherViolation(
+                        req.origin,
+                        req.requestedTime,
+                        req.weatherCondition ?: WeatherCondition(WeatherType.NONE)
+                    )
+                    
+                    if (warning == WeatherWarning.WILL_CANCEL) {
+                        Toast.makeText(
+                            requireContext(),
+                            "Warning: The passenger's weather safety rules are currently triggered for this ride. It might be cancelled automatically.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+
                     val driverRating = userRepo.getUser(session.uid ?: "")?.rating ?: 5.0
                     val res = requestRepo.acceptRequest(
                         req.id,
@@ -138,6 +157,7 @@ class DriverRequestAdapter(
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
         val tvDriver: TextView = v.findViewById(R.id.tv_driver)
+        val tvWeatherBadge: TextView = v.findViewById(R.id.tv_weather_badge)
         val btnCancel: Button = v.findViewById(R.id.btn_cancel)
         val btnRate: Button = v.findViewById(R.id.btn_rate)
     }
@@ -146,6 +166,7 @@ class DriverRequestAdapter(
         val r = getItem(pos)
         h.tvRoute.text = "${r.passengerName}: ${r.origin} → ${r.destination}"
         h.tvDriver.text = "Tap accept to move this ride to My Activities"
+        h.tvWeatherBadge.visibility = if (r.weatherWarning) View.VISIBLE else View.GONE
         h.btnCancel.visibility = View.VISIBLE
         h.btnCancel.text = "Accept"
         h.btnCancel.setOnClickListener { onAccept(r) }

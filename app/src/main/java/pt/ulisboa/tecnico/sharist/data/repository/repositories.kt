@@ -28,7 +28,14 @@ class RideRepository(
     fun getRides(filter: RideFilter): Flow<List<Ride>> = callbackFlow {
         val localJob = launch {
             local.rideDao.observeFilteredRides(filter.origin, filter.destination)
-                .map { list -> list.map { it.toDomain() }.filter { r -> r.status == RideStatus.OPEN } }
+                .map { list -> 
+                    val now = Date()
+                    list.map { it.toDomain() }.filter { r -> 
+                        val fiveMinsAfter = r.departureTime?.let { Date(it.time + 5 * 60 * 1000) }
+                        val isStale = fiveMinsAfter != null && now.after(fiveMinsAfter) && r.seatsAvailable == r.seatsTotal
+                        r.status == RideStatus.OPEN && !isStale
+                    } 
+                }
                 .collect { trySend(it) }
         }
 
@@ -122,20 +129,22 @@ class RideRepository(
         return local.rideDao.getById(rideId)?.toDomain()
     }
 
-    suspend fun cancelRide(rideId: String): Result<Unit> {
+    fun observeRide(rideId: String): Flow<Ride?> = local.rideDao.observeRideById(rideId).map { it?.toDomain() }
+
+    suspend fun cancelRide(rideId: String, reschedule: Boolean = false): Result<Unit> {
         if (!network.isConnected) {
             local.rideDao.getById(rideId)?.let {
                 local.rideDao.upsertOne(it.copy(status = RideStatus.CANCELLED.name, isPending = true))
                 local.pendingDao.insert(PendingOperation(
                     type = "CANCEL_RIDE",
-                    payload = gson.toJson(mapOf("rideId" to rideId))
+                    payload = gson.toJson(mapOf("rideId" to rideId, "reschedule" to reschedule))
                 ))
                 return Result.success(Unit)
             }
             return Result.failure(Exception("Ride not found locally"))
         }
         return runCatching {
-            remote.cancelRide(rideId)
+            remote.cancelRide(rideId, reschedule)
             local.rideDao.getById(rideId)?.let {
                 local.rideDao.upsertOne(it.copy(status = RideStatus.CANCELLED.name, isPending = false))
             }
@@ -149,11 +158,33 @@ class RideRepository(
         }
     }
 
-    suspend fun startRide(rideId: String): Result<Unit> = runCatching {
-        remote.startRide(rideId)
-        local.rideDao.getById(rideId)?.let {
-            local.rideDao.upsertOne(it.copy(status = RideStatus.EN_ROUTE.name))
+    suspend fun startRide(rideId: String, weatherService: pt.ulisboa.tecnico.sharist.utils.WeatherService): Result<Unit> = runCatching {
+        val uid = remote.currentUid ?: throw Exception("Not logged in")
+        
+        // Check if driver is already in another trip
+        val busyRides = local.rideDao.getBusyDriverRides(uid).filter { it.id != rideId }
+        val busyRequests = local.requestDao.getBusyDriverRequests(uid).filter { it.id != rideId }
+        
+        if (busyRides.isNotEmpty() || busyRequests.isNotEmpty()) {
+            throw Exception("Cannot start ride: You are already in an active trip.")
         }
+
+        val entity = local.rideDao.getById(rideId) ?: throw Exception("Ride not found")
+        val ride = entity.toDomain()
+
+        // Final safety check before starting
+        val warning = weatherService.checkWeatherViolation(
+            ride.origin,
+            ride.departureTime,
+            ride.weatherCondition ?: WeatherCondition(WeatherType.NONE)
+        )
+
+        if (warning == pt.ulisboa.tecnico.sharist.utils.WeatherWarning.WILL_CANCEL) {
+            throw Exception("Cannot start ride: Weather conditions currently violate safety rules.")
+        }
+
+        remote.startRide(rideId)
+        local.rideDao.upsertOne(entity.copy(status = RideStatus.EN_ROUTE.name))
     }
 
     fun getRideBookings(rideId: String): Flow<List<Booking>> = callbackFlow {
@@ -327,18 +358,22 @@ class RideRepository(
                     }
                     "CANCEL_REQUEST" -> {
                         val data = gson.fromJson(op.payload, Map::class.java)
-                        remote.cancelRequest(data["requestId"] as String)
+                        val reschedule = data["reschedule"] as? Boolean ?: false
+                        remote.cancelRequest(data["requestId"] as String, reschedule)
                     }
                     "UPDATE_REQUEST_STATUS" -> {
                         val data = gson.fromJson(op.payload, Map::class.java)
+                        val reschedule = data["reschedule"] as? Boolean ?: false
                         remote.updateRequestStatus(
                             data["requestId"] as String,
-                            RequestStatus.valueOf(data["status"] as String)
+                            RequestStatus.valueOf(data["status"] as String),
+                            reschedule
                         )
                     }
                     "CANCEL_RIDE" -> {
                         val data = gson.fromJson(op.payload, Map::class.java)
-                        remote.cancelRide(data["rideId"] as String)
+                        val reschedule = data["reschedule"] as? Boolean ?: false
+                        remote.cancelRide(data["rideId"] as String, reschedule)
                     }
                 }
                 op.synced = true
@@ -364,18 +399,70 @@ class RideRepository(
 
     suspend fun checkWeatherCancellations(weatherService: pt.ulisboa.tecnico.sharist.utils.WeatherService) {
         val uid = remote.currentUid ?: return
+        val now = java.util.Date()
+
+        // 1. Driver rides and weather
         val driverRides = local.rideDao.getDriverRidesSync(uid)
-        
         for (entity in driverRides) {
             val ride = entity.toDomain()
             if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL) {
-                val locId = weatherService.getLocationId(ride.origin)
-                weatherService.getForecast(locId).onSuccess { forecast ->
-                    val evaluation = weatherService.evaluateCondition(ride.weatherCondition, forecast)
-                    if (evaluation == pt.ulisboa.tecnico.sharist.utils.WeatherWarning.WILL_CANCEL) {
-                        Log.i(TAG, "Auto-cancelling ride ${ride.id} due to weather: ${forecast.description}")
-                        cancelRide(ride.id)
+                val departure = ride.departureTime ?: continue
+                val fiveMinsAfter = java.util.Date(departure.time + 5 * 60 * 1000)
+
+                val warning = weatherService.checkWeatherViolation(
+                    ride.origin,
+                    ride.departureTime,
+                    ride.weatherCondition ?: WeatherCondition(WeatherType.NONE)
+                )
+
+                val isViolated = warning == pt.ulisboa.tecnico.sharist.utils.WeatherWarning.WILL_CANCEL
+                
+                // Update warning flag in DB
+                if (ride.weatherWarning != isViolated) {
+                    local.rideDao.upsertOne(entity.copy(weatherWarning = isViolated))
+                }
+
+                if (isViolated) {
+                    if (now.after(departure)) {
+                        Log.i(TAG, "Auto-cancelling and rescheduling ride ${ride.id} due to weather at departure")
+                        cancelRide(ride.id, reschedule = ride.periodic)
                     }
+                } else if (now.after(fiveMinsAfter) && ride.seatsAvailable == ride.seatsTotal) {
+                    Log.i(TAG, "Auto-cancelling stale ride ${ride.id} (no passengers joined)")
+                    cancelRide(ride.id, reschedule = ride.periodic)
+                }
+            }
+        }
+
+        // 2. Passenger bookings (Weather and Stale check)
+        val passengerBookings = local.bookingDao.getPassengerBookingsSync(uid)
+        for (entity in passengerBookings) {
+            val booking = entity.toDomain()
+            if (booking.status == BookingStatus.ACCEPTED || booking.status == BookingStatus.PENDING) {
+                val departure = booking.departureTime ?: continue
+                val fiveMinsAfter = java.util.Date(departure.time + 5 * 60 * 1000)
+
+                val warning = weatherService.checkWeatherViolation(
+                    booking.origin,
+                    booking.departureTime,
+                    booking.weatherCondition ?: WeatherCondition(WeatherType.NONE)
+                )
+
+                val isViolated = warning == pt.ulisboa.tecnico.sharist.utils.WeatherWarning.WILL_CANCEL
+
+                // Update warning flag in DB
+                if (booking.weatherWarning != isViolated) {
+                    local.bookingDao.upsertOne(entity.copy(weatherWarning = isViolated))
+                }
+
+                if (isViolated) {
+                    if (now.after(departure)) {
+                        Log.i(TAG, "Auto-cancelling booking ${booking.id} due to weather at departure")
+                        updateBookingStatus(booking.id, BookingStatus.CANCELLED)
+                    }
+                } else if (now.after(fiveMinsAfter)) {
+                    Log.i(TAG, "Auto-cancelling stale booking ${booking.id} (ride never started)")
+                    updateBookingStatus(booking.id, BookingStatus.CANCELLED)
                 }
             }
         }
@@ -553,20 +640,20 @@ class RideRequestRepository(
         }
     }
 
-    suspend fun cancelRequest(requestId: String): Result<Unit> {
+    suspend fun cancelRequest(requestId: String, reschedule: Boolean = false): Result<Unit> {
         if (!network.isConnected) {
             local.requestDao.getById(requestId)?.let {
                 local.requestDao.upsertOne(it.copy(status = RequestStatus.CANCELLED.name, isPending = true))
                 local.pendingDao.insert(PendingOperation(
                     type = "CANCEL_REQUEST",
-                    payload = gson.toJson(mapOf("requestId" to requestId))
+                    payload = gson.toJson(mapOf("requestId" to requestId, "reschedule" to reschedule))
                 ))
                 return Result.success(Unit)
             }
             return Result.failure(Exception("Request not found locally"))
         }
         return runCatching {
-            remote.cancelRequest(requestId)
+            remote.cancelRequest(requestId, reschedule)
             local.requestDao.getById(requestId)?.let {
                 local.requestDao.upsertOne(it.copy(status = RequestStatus.CANCELLED.name, isPending = false))
             }
@@ -614,17 +701,35 @@ class RideRequestRepository(
     suspend fun checkWeatherCancellations(weatherService: pt.ulisboa.tecnico.sharist.utils.WeatherService) {
         val uid = remote.currentUid ?: return
         val passengerRequests = local.requestDao.getPassengerRequestsSync(uid)
+        val now = java.util.Date()
         
         for (entity in passengerRequests) {
             val req = entity.toDomain()
             if (req.status == RequestStatus.OPEN || req.status == RequestStatus.ACCEPTED) {
-                val locId = weatherService.getLocationId(req.origin)
-                weatherService.getForecast(locId).onSuccess { forecast ->
-                    val evaluation = weatherService.evaluateCondition(req.weatherCondition, forecast)
-                    if (evaluation == pt.ulisboa.tecnico.sharist.utils.WeatherWarning.WILL_CANCEL) {
-                        Log.i("RideRequestRepository", "Auto-cancelling request ${req.id} due to weather")
-                        cancelRequest(req.id)
+                val departure = req.requestedTime ?: continue
+                val fiveMinsAfter = java.util.Date(departure.time + 5 * 60 * 1000)
+
+                val warning = weatherService.checkWeatherViolation(
+                    req.origin,
+                    req.requestedTime,
+                    req.weatherCondition ?: WeatherCondition(WeatherType.NONE)
+                )
+
+                val isViolated = warning == pt.ulisboa.tecnico.sharist.utils.WeatherWarning.WILL_CANCEL
+
+                // Update warning flag in DB
+                if (req.weatherWarning != isViolated) {
+                    local.requestDao.upsertOne(entity.copy(weatherWarning = isViolated))
+                }
+
+                if (isViolated) {
+                    if (now.after(departure)) {
+                        Log.i(TAG, "Auto-cancelling and rescheduling request ${req.id} due to weather at departure")
+                        cancelRequest(req.id, reschedule = req.periodic)
                     }
+                } else if (now.after(fiveMinsAfter) && req.status == RequestStatus.OPEN) {
+                    Log.i("RideRequestRepository", "Auto-cancelling stale request ${req.id} (no driver accepted)")
+                    cancelRequest(req.id, reschedule = req.periodic)
                 }
             }
         }
@@ -639,4 +744,46 @@ class UserRepository(private val remote: RemoteDataSource) {
     suspend fun createProfile(user: User) = remote.createUserProfile(user)
     suspend fun getUser(uid: String) = remote.getUser(uid)
     suspend fun updateBalance(uid: String, delta: Double) = remote.updateBalance(uid, delta)
+}
+
+class FavoriteLocationRepository(
+    private val remote: RemoteDataSource,
+    private val local: LocalDataSource,
+    private val network: NetworkMonitor
+) {
+    fun getFavorites(userId: String): Flow<List<FavoriteLocation>> = callbackFlow {
+        val localJob = launch {
+            local.favoriteDao.observeFavorites(userId).collect { trySend(it) }
+        }
+        var remoteJob: kotlinx.coroutines.Job? = null
+        if (network.isConnected) {
+            remoteJob = launch(Dispatchers.IO) {
+                remote.observeFavorites(userId)
+                    .catch { Log.e(TAG, "Remote favorites sync error: ${it.message}") }
+                    .collect { list ->
+                        local.favoriteDao.upsert(list)
+                    }
+            }
+        }
+        awaitClose {
+            localJob.cancel()
+            remoteJob?.cancel()
+        }
+    }
+
+    suspend fun addFavorite(favorite: FavoriteLocation): Result<Unit> {
+        local.favoriteDao.upsertOne(favorite)
+        if (network.isConnected) {
+            runCatching { remote.addFavorite(favorite) }
+        }
+        return Result.success(Unit)
+    }
+
+    suspend fun deleteFavorite(id: String): Result<Unit> {
+        local.favoriteDao.deleteById(id)
+        if (network.isConnected) {
+            runCatching { remote.deleteFavorite(id) }
+        }
+        return Result.success(Unit)
+    }
 }

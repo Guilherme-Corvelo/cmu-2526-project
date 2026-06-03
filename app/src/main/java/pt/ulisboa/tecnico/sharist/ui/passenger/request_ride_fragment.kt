@@ -21,6 +21,8 @@ import pt.ulisboa.tecnico.sharist.data.model.*
 import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
 import pt.ulisboa.tecnico.sharist.ui.map.MapDemoData
 import pt.ulisboa.tecnico.sharist.utils.PriceCalculator
+import pt.ulisboa.tecnico.sharist.utils.WeatherService
+import pt.ulisboa.tecnico.sharist.utils.WeatherWarning
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -37,27 +39,72 @@ class RequestRideFragment : Fragment() {
         val app = requireActivity().application as SharISTApp
         requestRepo = app.requestRepository
         val session = app.sessionManager
+
+        // View Initializations
         val etOrigin = view.findViewById<AutoCompleteTextView>(R.id.et_origin)
         val etDestination = view.findViewById<AutoCompleteTextView>(R.id.et_destination)
         val tvEstimatedPrice = view.findViewById<TextView>(R.id.tv_estimated_price)
-        
+        val tvSelectedTime = view.findViewById<TextView>(R.id.tv_selected_time)
+        val tvMapStatus = view.findViewById<TextView>(R.id.tv_map_status)
+        val spinnerWeather = view.findViewById<Spinner>(R.id.spinner_weather)
+        val layoutThreshold = view.findViewById<View>(R.id.layout_threshold)
+        val etThreshold = view.findViewById<EditText>(R.id.et_threshold)
+        val cvWeatherWarning = view.findViewById<View>(R.id.cv_weather_warning)
+        val tvWeatherWarningText = view.findViewById<TextView>(R.id.tv_weather_warning_text)
+        val btnPickTime = view.findViewById<Button>(R.id.btn_pick_time)
+        val btnRequest = view.findViewById<Button>(R.id.btn_request)
+        mapView = view.findViewById(R.id.request_map)
+
+        val selectedTime = Calendar.getInstance()
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+        // Weather check function
+        fun performWeatherCheck() {
+            val origin = etOrigin.text.toString().trim()
+            if (origin.isBlank()) {
+                cvWeatherWarning.visibility = View.GONE
+                return
+            }
+            val type = WeatherType.values()[spinnerWeather.selectedItemPosition]
+            val threshold = etThreshold.text.toString().toDoubleOrNull()
+            val condition = WeatherCondition(type, threshold)
+
+            viewLifecycleOwner.lifecycleScope.launch {
+                val warning = app.weatherService.checkWeatherViolation(
+                    origin,
+                    selectedTime.time,
+                    condition
+                )
+
+                if (warning == WeatherWarning.WILL_CANCEL) {
+                    val thresholdValue = condition.threshold ?: (if (condition.type == WeatherType.TOO_HOT) 35.0 else 5.0)
+                    val conditionDetail = when (condition.type) {
+                        WeatherType.TOO_HOT -> "high temperatures (Threshold: ${thresholdValue}°C)"
+                        WeatherType.TOO_COLD -> "low temperatures (Threshold: ${thresholdValue}°C)"
+                        WeatherType.RAIN -> "rain"
+                        else -> "weather conditions"
+                    }
+                    tvWeatherWarningText.text = "⚠ Safety Note: This request currently violates weather safety rules for $conditionDetail. It will remain active until departure time in case the forecast improves."
+                    cvWeatherWarning.visibility = View.VISIBLE
+                } else {
+                    cvWeatherWarning.visibility = View.GONE
+                }
+            }
+        }
+
+        // Setup Locations Adapter
         val locations = MapDemoData.allPoints().keys.toList()
         val adapter = ArrayAdapter<String>(requireContext(), android.R.layout.simple_dropdown_item_1line, locations)
         etOrigin.setAdapter(adapter)
         etDestination.setAdapter(adapter)
 
-        // Make dropdowns appear on click
         etOrigin.setOnClickListener { etOrigin.showDropDown() }
         etOrigin.setOnTouchListener { _, _ -> etOrigin.showDropDown(); false }
         etDestination.setOnClickListener { etDestination.showDropDown() }
         etDestination.setOnTouchListener { _, _ -> etDestination.showDropDown(); false }
-        val tvSelectedTime = view.findViewById<TextView>(R.id.tv_selected_time)
-        val tvMapStatus = view.findViewById<TextView>(R.id.tv_map_status)
-        val selectedTime = Calendar.getInstance()
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
+        // Setup Map
         Configuration.getInstance().load(requireContext(), requireContext().getSharedPreferences("osmdroid", 0))
-        mapView = view.findViewById(R.id.request_map)
         mapView.setTileSource(TileSourceFactory.MAPNIK)
         mapView.setMultiTouchControls(true)
         mapView.controller.setCenter(MapDemoData.lisbon)
@@ -99,20 +146,17 @@ class RequestRideFragment : Fragment() {
             mapView.invalidate()
         }
 
+        // Listeners
         val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
-            override fun afterTextChanged(s: Editable?) = updateRoutePreview()
+            override fun afterTextChanged(s: Editable?) {
+                updateRoutePreview()
+                performWeatherCheck()
+            }
         }
         etOrigin.addTextChangedListener(watcher)
         etDestination.addTextChangedListener(watcher)
-
-        renderSelectedTime()
-        updateRoutePreview()
-
-        val spinnerWeather = view.findViewById<Spinner>(R.id.spinner_weather)
-        val layoutThreshold = view.findViewById<View>(R.id.layout_threshold)
-        val etThreshold = view.findViewById<EditText>(R.id.et_threshold)
 
         val weatherOptions = WeatherType.values().map { it.name }
         spinnerWeather.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, weatherOptions)
@@ -120,11 +164,18 @@ class RequestRideFragment : Fragment() {
             override fun onItemSelected(p0: AdapterView<*>?, p1: View?, pos: Int, p3: Long) {
                 val selected = WeatherType.values()[pos]
                 layoutThreshold.visibility = if (selected == WeatherType.TOO_HOT || selected == WeatherType.TOO_COLD) View.VISIBLE else View.GONE
+                performWeatherCheck()
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        view.findViewById<Button>(R.id.btn_pick_time).setOnClickListener {
+        etThreshold.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) { performWeatherCheck() }
+        })
+
+        btnPickTime.setOnClickListener {
             TimePickerDialog(
                 requireContext(),
                 { _, hourOfDay, minute ->
@@ -133,6 +184,7 @@ class RequestRideFragment : Fragment() {
                     selectedTime.set(Calendar.SECOND, 0)
                     selectedTime.set(Calendar.MILLISECOND, 0)
                     renderSelectedTime()
+                    performWeatherCheck()
                 },
                 selectedTime.get(Calendar.HOUR_OF_DAY),
                 selectedTime.get(Calendar.MINUTE),
@@ -140,7 +192,7 @@ class RequestRideFragment : Fragment() {
             ).show()
         }
 
-        view.findViewById<Button>(R.id.btn_request).setOnClickListener {
+        btnRequest.setOnClickListener {
             val origin = etOrigin.text.toString().trim()
             val destination = etDestination.text.toString().trim()
             val originPoint = MapDemoData.pointFor(origin)
@@ -184,7 +236,6 @@ class RequestRideFragment : Fragment() {
                 val result = requestRepo.createRequest(request)
                 if (result.isSuccess) {
                     Toast.makeText(requireContext(), "Request created successfully!", Toast.LENGTH_SHORT).show()
-                    // Navigate to My Requests list instead of just finishing the activity
                     findNavController().navigate(R.id.action_request_to_my_requests)
                 } else {
                     Toast.makeText(
@@ -195,6 +246,10 @@ class RequestRideFragment : Fragment() {
                 }
             }
         }
+
+        renderSelectedTime()
+        updateRoutePreview()
+        performWeatherCheck()
     }
 
     override fun onResume() {

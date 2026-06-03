@@ -61,12 +61,20 @@ class MyRequestsFragment : Fragment() {
                 }
             },
             onRejectDriver = { item ->
-                if (item is RideRequest) {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        item.driverId?.let { driverId ->
-                            requestRepo.rejectDriver(item.id, driverId)
-                            Toast.makeText(requireContext(), "Driver rejected. Searching again...", Toast.LENGTH_SHORT).show()
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val (requestId, driverId) = when (item) {
+                        is RideRequest -> item.id to item.driverId
+                        is pt.ulisboa.tecnico.sharist.data.model.Booking -> {
+                            if (item.rideId.startsWith("requested_")) {
+                                item.rideId.removePrefix("requested_") to item.driverId
+                            } else null to null
                         }
+                        else -> null to null
+                    }
+
+                    if (requestId != null && driverId != null) {
+                        requestRepo.rejectDriver(requestId, driverId)
+                        Toast.makeText(requireContext(), "Driver rejected. Searching again...", Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -111,7 +119,12 @@ class MyRequestsFragment : Fragment() {
                 requestRepo.getPassengerRequests(uid),
                 rideRepo.getPassengerBookings(uid)
             ) { requests, bookings ->
-                (requests + bookings).sortedByDescending { 
+                // Filter out the "shadow" bookings created for ride requests to avoid duplicates.
+                // We prefer showing the RideRequest object because its status is actively updated by the driver
+                // during the trip phases (EN_ROUTE, PICKED_UP, etc.).
+                val filteredBookings = bookings.filter { !it.rideId.startsWith("requested_") }
+                
+                (requests + filteredBookings).sortedByDescending {
                     when (it) {
                         is RideRequest -> it.createdAt?.time ?: 0L
                         is pt.ulisboa.tecnico.sharist.data.model.Booking -> it.createdAt?.time ?: 0L
@@ -140,6 +153,7 @@ class MyRequestAdapter(
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
         val tvPendingBadge: TextView = v.findViewById(R.id.tv_pending_badge)
+        val tvWeatherBadge: TextView = v.findViewById(R.id.tv_weather_badge)
         val tvTime: TextView = v.findViewById(R.id.tv_time)
         val tvPrice: TextView = v.findViewById(R.id.tv_price)
         val tvDriver: TextView = v.findViewById(R.id.tv_driver)
@@ -154,6 +168,7 @@ class MyRequestAdapter(
         if (item is RideRequest) {
             h.tvRoute.text = "${item.origin} → ${item.destination}"
             h.tvPendingBadge.visibility = if (item.isPending) View.VISIBLE else View.GONE
+            h.tvWeatherBadge.visibility = if (item.weatherWarning) View.VISIBLE else View.GONE
             h.tvTime.text = item.requestedTime?.let { dateFmt.format(it) } ?: "Pending..."
             h.tvPrice.text = "€ %.2f".format(item.estimatedPrice)
             h.tvDriver.text = item.driverName?.let { "Driver: $it" } ?: "Searching for driver..."
@@ -171,6 +186,7 @@ class MyRequestAdapter(
         } else if (item is pt.ulisboa.tecnico.sharist.data.model.Booking) {
             h.tvRoute.text = "${item.origin} → ${item.destination}"
             h.tvPendingBadge.visibility = if (item.isPending) View.VISIBLE else View.GONE
+            h.tvWeatherBadge.visibility = if (item.weatherWarning) View.VISIBLE else View.GONE
             h.tvTime.text = item.departureTime?.let { dateFmt.format(it) } ?: "Pending..."
             h.tvPrice.text = "€ %.2f".format(item.totalPrice)
             h.tvDriver.text = "Driver: ${item.driverName}"

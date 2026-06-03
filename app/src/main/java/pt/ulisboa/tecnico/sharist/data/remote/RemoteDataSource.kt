@@ -19,7 +19,7 @@ interface RemoteDataSource {
     suspend fun getRide(rideId: String): Ride?
     fun observeDriverRides(driverId: String): Flow<List<Ride>>
     suspend fun createRide(ride: Ride): String
-    suspend fun cancelRide(rideId: String)
+    suspend fun cancelRide(rideId: String, reschedule: Boolean = false)
     suspend fun completeRide(rideId: String)
     suspend fun startRide(rideId: String)
     suspend fun decrementSeat(rideId: String)
@@ -36,12 +36,23 @@ interface RemoteDataSource {
     fun observePassengerRequests(passengerId: String): Flow<List<RideRequest>>
     fun observeDriverRequests(driverId: String): Flow<List<RideRequest>>
     suspend fun createRequest(request: RideRequest): String
-    suspend fun cancelRequest(requestId: String)
+    suspend fun cancelRequest(requestId: String, reschedule: Boolean = false)
     suspend fun completeRequest(requestId: String)
-    suspend fun updateRequestStatus(requestId: String, status: RequestStatus)
+    suspend fun updateRequestStatus(requestId: String, status: RequestStatus, reschedule: Boolean = false)
     suspend fun denyRequest(requestId: String, driverId: String)
     suspend fun rejectDriver(requestId: String, driverId: String)
     suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double)
     suspend fun processRideReputation(rideId: String)
     fun clearListeners()
+
+    // Meta-Moderation / Admin
+    suspend fun getAllUsers(): List<User>
+    suspend fun getReviewsForUserSync(userId: String): List<Review>
+    suspend fun flagReviewAsOutlier(reviewId: String)
+    suspend fun updateUserTrustScore(userId: String, trustScore: Double)
+
+    // Favorite Locations
+    fun observeFavorites(userId: String): Flow<List<FavoriteLocation>>
+    suspend fun addFavorite(favorite: FavoriteLocation)
+    suspend fun deleteFavorite(id: String)
 }

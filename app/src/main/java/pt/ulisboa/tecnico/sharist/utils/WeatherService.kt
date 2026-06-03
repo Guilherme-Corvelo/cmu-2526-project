@@ -31,34 +31,74 @@ data class WeatherForecast(
 
 class WeatherService {
 
+    private val cache = mutableMapOf<Int, Pair<Long, List<WeatherForecast>>>()
+    private val CACHE_DURATION = 30 * 60 * 1000 // 30 minutes
+
     /**
-     * Fetches today's forecast for the given IPMA location ID.
-     * Real endpoint: https://api.ipma.pt/open-data/forecast/meteorology/cities/daily/{locationId}.json
+     * Fetches forecast for the given IPMA location ID.
      */
-    suspend fun getForecast(locationId: Int): Result<WeatherForecast> =
+    suspend fun getForecasts(locationId: Int): Result<List<WeatherForecast>> =
         withContext(Dispatchers.IO) {
+            val cached = cache[locationId]
+            if (cached != null && System.currentTimeMillis() - cached.first < CACHE_DURATION) {
+                return@withContext Result.success(cached.second)
+            }
+
             runCatching {
                 val url = "https://api.ipma.pt/open-data/forecast/meteorology/cities/daily/$locationId.json"
                 val json = URL(url).readText()
-                parseIpmaResponse(json)
+                val forecasts = parseIpmaResponse(json)
+                cache[locationId] = System.currentTimeMillis() to forecasts
+                forecasts
             }
         }
 
-    private fun parseIpmaResponse(json: String): WeatherForecast {
+    private fun parseIpmaResponse(json: String): List<WeatherForecast> {
         val root = JSONObject(json)
-        val data = root.getJSONArray("data").getJSONObject(0) // today
+        val dataArray = root.getJSONArray("data")
+        val forecasts = mutableListOf<WeatherForecast>()
+        
+        for (i in 0 until dataArray.length()) {
+            val data = dataArray.getJSONObject(i)
+            val tMin      = data.optDouble("tMin", 0.0)
+            val tMax      = data.optDouble("tMax", 0.0)
+            val precipProb = data.optInt("precipitaProb", 0)
+            val windClass  = data.optInt("classWindSpeed", 1)
+            val weatherId  = data.optInt("idWeatherType", 1)
+            val date       = data.optString("forecastDate", "")
 
-        val tMin      = data.optDouble("tMin", 0.0)
-        val tMax      = data.optDouble("tMax", 0.0)
-        val precipProb = data.optInt("precipitaProb", 0)
-        val windClass  = data.optInt("classWindSpeed", 1)
-        val weatherId  = data.optInt("idWeatherType", 1)
-        val date       = data.optString("forecastDate", "")
+            val description = weatherDescription(weatherId)
+            val willRain    = precipProb >= 40 || weatherId in listOf(6, 7, 8, 9, 10, 11, 12, 13, 14)
 
-        val description = weatherDescription(weatherId)
-        val willRain    = precipProb >= 40 || weatherId in listOf(6, 7, 8, 9, 10, 11, 12, 13, 14)
+            forecasts.add(WeatherForecast(tMin, tMax, precipProb, windClass, description, willRain, date))
+        }
+        return forecasts
+    }
 
-        return WeatherForecast(tMin, tMax, precipProb, windClass, description, willRain, date)
+    suspend fun getForecast(locationId: Int): Result<WeatherForecast> =
+        getForecasts(locationId).map { it.first() }
+
+    /**
+     * Checks whether the ride should be warned/cancelled based on its
+     * WeatherCondition and the requested date.
+     */
+    suspend fun checkWeatherViolation(
+        city: String,
+        date: java.util.Date?,
+        condition: WeatherCondition
+    ): WeatherWarning {
+        if (condition.type == WeatherType.NONE) return WeatherWarning.NONE
+        
+        val forecasts = getForecasts(getLocationId(city)).getOrNull() ?: return WeatherWarning.NONE
+        
+        val targetDateStr = date?.let { 
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(it)
+        } ?: ""
+
+        val forecast = forecasts.find { it.date == targetDateStr } ?: forecasts.firstOrNull() 
+            ?: return WeatherWarning.NONE
+
+        return evaluateCondition(condition, forecast)
     }
 
     private fun weatherDescription(id: Int) = when (id) {

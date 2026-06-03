@@ -100,7 +100,7 @@ class SharISTApp : Application() {
             override suspend fun getRide(rideId: String) = delegate.getRide(rideId)
             override fun observeDriverRides(driverId: String) = delegate.observeDriverRides(driverId)
             override suspend fun createRide(ride: Ride) = delegate.createRide(ride)
-            override suspend fun cancelRide(rideId: String) = delegate.cancelRide(rideId)
+            override suspend fun cancelRide(rideId: String, reschedule: Boolean) = delegate.cancelRide(rideId, reschedule)
             override suspend fun completeRide(rideId: String) = delegate.completeRide(rideId)
             override suspend fun startRide(rideId: String) = delegate.startRide(rideId)
             override suspend fun decrementSeat(rideId: String) = delegate.decrementSeat(rideId)
@@ -113,15 +113,25 @@ class SharISTApp : Application() {
             override fun observePassengerRequests(passengerId: String) = delegate.observePassengerRequests(passengerId)
             override fun observeDriverRequests(driverId: String) = delegate.observeDriverRequests(driverId)
             override suspend fun createRequest(request: RideRequest) = delegate.createRequest(request)
-            override suspend fun cancelRequest(requestId: String) = delegate.cancelRequest(requestId)
+            override suspend fun cancelRequest(requestId: String, reschedule: Boolean) = delegate.cancelRequest(requestId, reschedule)
             override suspend fun completeRequest(requestId: String) = delegate.completeRequest(requestId)
-            override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) = delegate.updateRequestStatus(requestId, status)
+            override suspend fun updateRequestStatus(requestId: String, status: RequestStatus, reschedule: Boolean) = 
+                delegate.updateRequestStatus(requestId, status, reschedule)
             override suspend fun denyRequest(requestId: String, driverId: String) = delegate.denyRequest(requestId, driverId)
             override suspend fun rejectDriver(requestId: String, driverId: String) = delegate.rejectDriver(requestId, driverId)
             override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) =
                 delegate.acceptRequest(requestId, driverId, driverName, driverRating)
 
             override suspend fun processRideReputation(rideId: String) = delegate.processRideReputation(rideId)
+
+            override suspend fun getAllUsers() = delegate.getAllUsers()
+            override suspend fun getReviewsForUserSync(userId: String) = delegate.getReviewsForUserSync(userId)
+            override suspend fun flagReviewAsOutlier(reviewId: String) = delegate.flagReviewAsOutlier(reviewId)
+            override suspend fun updateUserTrustScore(userId: String, trustScore: Double) = delegate.updateUserTrustScore(userId, trustScore)
+
+            override fun observeFavorites(userId: String) = delegate.observeFavorites(userId)
+            override suspend fun addFavorite(favorite: FavoriteLocation) = delegate.addFavorite(favorite)
+            override suspend fun deleteFavorite(id: String) = delegate.deleteFavorite(id)
 
             override fun clearListeners() {
                 if (firebaseInstance.isInitialized()) {
@@ -137,6 +147,9 @@ class SharISTApp : Application() {
     val rideRepository by lazy { RideRepository(remoteDataSource, localDataSource, networkMonitor) }
     val requestRepository by lazy { RideRequestRepository(remoteDataSource, localDataSource, networkMonitor) }
     val userRepository by lazy { UserRepository(remoteDataSource) }
+    val favoriteLocationRepository by lazy { 
+        pt.ulisboa.tecnico.sharist.data.repository.FavoriteLocationRepository(remoteDataSource, localDataSource, networkMonitor) 
+    }
     val weatherService by lazy { pt.ulisboa.tecnico.sharist.utils.WeatherService() }
 
     companion object {
@@ -156,6 +169,20 @@ class SharISTApp : Application() {
         }
 
         val appScope = ProcessLifecycleOwner.get().lifecycleScope
+        
+        // Periodic cleanup and weather check (every minute)
+        appScope.launch {
+            while(true) {
+                try {
+                    rideRepository.checkWeatherCancellations(weatherService)
+                    requestRepository.checkWeatherCancellations(weatherService)
+                } catch (e: Exception) {
+                    Log.e("SharISTApp", "Periodic cleanup error", e)
+                }
+                kotlinx.coroutines.delay(60 * 1000)
+            }
+        }
+
         networkMonitor.connectionFlow
             .onEach { connectionType ->
                 try {

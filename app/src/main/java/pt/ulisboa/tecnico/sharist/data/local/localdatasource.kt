@@ -2,11 +2,8 @@ package pt.ulisboa.tecnico.sharist.data.local
 
 import android.content.Context
 import androidx.room.*
+import pt.ulisboa.tecnico.sharist.data.model.*
 import kotlinx.coroutines.flow.Flow
-import pt.ulisboa.tecnico.sharist.data.model.BookingEntity
-import pt.ulisboa.tecnico.sharist.data.model.PendingOperation
-import pt.ulisboa.tecnico.sharist.data.model.RideEntity
-import pt.ulisboa.tecnico.sharist.data.model.RideRequestEntity
 
 @Dao
 interface RideRequestDao {
@@ -24,6 +21,9 @@ interface RideRequestDao {
 
     @Query("SELECT * FROM requests_cache WHERE passengerId = :uid AND status IN ('OPEN', 'ACCEPTED', 'EN_ROUTE', 'PICKED_UP')")
     suspend fun getActivePassengerRequests(uid: String): List<RideRequestEntity>
+
+    @Query("SELECT * FROM requests_cache WHERE driverId = :uid AND status IN ('EN_ROUTE', 'PICKED_UP')")
+    suspend fun getBusyDriverRequests(uid: String): List<RideRequestEntity>
 
     @Query("SELECT * FROM requests_cache WHERE id = :id")
     suspend fun getById(id: String): RideRequestEntity?
@@ -52,8 +52,14 @@ interface RideDao {
     @Query("SELECT * FROM rides_cache WHERE driverId = :uid AND status IN ('OPEN', 'FULL', 'EN_ROUTE')")
     suspend fun getActiveDriverRides(uid: String): List<RideEntity>
 
+    @Query("SELECT * FROM rides_cache WHERE driverId = :uid AND status = 'EN_ROUTE'")
+    suspend fun getBusyDriverRides(uid: String): List<RideEntity>
+
     @Query("SELECT * FROM rides_cache WHERE id = :id")
     suspend fun getById(id: String): RideEntity?
+
+    @Query("SELECT * FROM rides_cache WHERE id = :id")
+    fun observeRideById(id: String): Flow<RideEntity?>
 
     @Query("SELECT * FROM rides_cache WHERE status = 'OPEN' " +
            "AND (:origin = '' OR origin LIKE '%' || :origin || '%') " +
@@ -98,6 +104,9 @@ interface BookingDao {
     @Upsert suspend fun upsert(bookings: List<BookingEntity>)
     @Upsert suspend fun upsertOne(booking: BookingEntity)
 
+    @Query("SELECT * FROM bookings_cache WHERE passengerId = :uid")
+    suspend fun getPassengerBookingsSync(uid: String): List<BookingEntity>
+
     @Query("DELETE FROM bookings_cache WHERE id = :id")
     suspend fun deleteById(id: String)
 
@@ -105,12 +114,28 @@ interface BookingDao {
     suspend fun evictStale(cutoffMs: Long)
 }
 
-@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class], version = 13, exportSchema = false)
+@Dao
+interface FavoriteLocationDao {
+    @Query("SELECT * FROM favorite_locations WHERE userId = :userId")
+    fun observeFavorites(userId: String): Flow<List<FavoriteLocation>>
+
+    @Query("SELECT * FROM favorite_locations WHERE userId = :userId")
+    suspend fun getFavoritesSync(userId: String): List<FavoriteLocation>
+
+    @Upsert suspend fun upsert(favorites: List<FavoriteLocation>)
+    @Upsert suspend fun upsertOne(favorite: FavoriteLocation)
+
+    @Query("DELETE FROM favorite_locations WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+@Database(entities = [RideRequestEntity::class, RideEntity::class, BookingEntity::class, PendingOperation::class, FavoriteLocation::class], version = 15, exportSchema = false)
 abstract class SharISTDatabase : RoomDatabase() {
     abstract fun requestDao(): RideRequestDao
     abstract fun rideDao(): RideDao
     abstract fun bookingDao(): BookingDao
     abstract fun pendingDao(): PendingOperationDao
+    abstract fun favoriteDao(): FavoriteLocationDao
 
     companion object {
         @Volatile private var INSTANCE: SharISTDatabase? = null
@@ -126,6 +151,7 @@ class LocalDataSource(private val db: SharISTDatabase) {
     val rideDao get() = db.rideDao()
     val bookingDao get() = db.bookingDao()
     val pendingDao get() = db.pendingDao()
+    val favoriteDao get() = db.favoriteDao()
     suspend fun evictStale() {
         val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
         requestDao.evictStale(cutoff)

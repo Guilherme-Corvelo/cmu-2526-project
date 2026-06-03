@@ -71,6 +71,8 @@ object DemoRideStore {
         users[user.uid] = user
     }
 
+    fun getAllUsers(): List<User> = users.values.toList()
+
     fun getUser(uid: String): User? = users[uid]
 
     fun findUserByEmail(email: String): User? =
@@ -112,13 +114,33 @@ object DemoRideStore {
     fun observeReviewsForUser(userId: String): Flow<List<Review>> =
         reviewsFlow.map { reviews -> reviews.filter { it.driverId == userId }.sortedByDescending { it.createdAt?.time ?: 0L } }
 
+    fun getReviewsForUserSync(userId: String): List<Review> =
+        reviewsFlow.value.filter { it.driverId == userId }
+
+    fun flagReviewAsOutlier(reviewId: String) {
+        reviewsFlow.value = reviewsFlow.value.map {
+            if (it.id == reviewId) it.copy(isOutlier = true) else it
+        }.toMutableList()
+    }
+
+    fun updateUserTrustScore(userId: String, trustScore: Double) {
+        users[userId]?.let {
+            users[userId] = it.copy(trustScore = trustScore)
+        }
+    }
+
     fun observeRides(filter: RideFilter): Flow<List<Ride>> {
         return ridesFlow.map { rides ->
+            val now = Date()
             rides.filter { ride ->
+                val fiveMinsAfter = ride.departureTime?.let { Date(it.time + 5 * 60 * 1000) }
+                val isStale = fiveMinsAfter != null && now.after(fiveMinsAfter) && ride.seatsAvailable == ride.seatsTotal
+                
+                !isStale &&
                 matchesText(ride.origin, filter.origin) &&
-                    matchesText(ride.destination, filter.destination) &&
-                    ride.seatsAvailable >= filter.minSeats &&
-                    (filter.maxPrice == null || ride.pricePerSeat <= filter.maxPrice)
+                matchesText(ride.destination, filter.destination) &&
+                ride.seatsAvailable >= filter.minSeats &&
+                (filter.maxPrice == null || ride.pricePerSeat <= filter.maxPrice)
             }
         }
     }

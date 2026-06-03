@@ -57,9 +57,9 @@ class ProfileFragment : Fragment() {
 
         if (session.forceDemoMode && isOwnProfile) {
             val demoUser = if (session.role == SessionManager.ROLE_DRIVER) {
-                User(DemoRequestStore.DEMO_DRIVER_ID, DemoRequestStore.DEMO_DRIVER_NAME, "demo_driver@demo.app", driver = true, rating = 4.8, ratingCount = 36, vehicleType = VehicleType.SEDAN, vehiclePlate = "DEMO-01")
+                User(uid = DemoRequestStore.DEMO_DRIVER_ID, displayName = DemoRequestStore.DEMO_DRIVER_NAME, email = "demo_driver@demo.app", driver = true, rating = 4.8, ratingCount = 36, vehicleType = VehicleType.SEDAN, vehiclePlate = "DEMO-01")
             } else {
-                User(DemoRequestStore.DEMO_CLIENT_ID, DemoRequestStore.DEMO_CLIENT_NAME, "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
+                User(uid = DemoRequestStore.DEMO_CLIENT_ID, displayName = DemoRequestStore.DEMO_CLIENT_NAME, email = "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
             }
             bindProfile(demoUser, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
             observeReviews(demoUser.uid, tvComments, tvRatingSummary, tvHistogram)

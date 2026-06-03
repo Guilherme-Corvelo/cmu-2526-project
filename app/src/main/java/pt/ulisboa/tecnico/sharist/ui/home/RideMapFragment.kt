@@ -8,27 +8,51 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Marker
 import pt.ulisboa.tecnico.sharist.R
+import pt.ulisboa.tecnico.sharist.SharISTApp
+import pt.ulisboa.tecnico.sharist.data.model.FavoriteLocation
+import pt.ulisboa.tecnico.sharist.data.model.Ride
+import pt.ulisboa.tecnico.sharist.data.model.RideRequest
+import android.graphics.Color
 
 class RideMapFragment : Fragment() {
 
+    private val viewModel: RideMapViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                val app = requireActivity().application as SharISTApp
+                @Suppress("UNCHECKED_CAST")
+                return RideMapViewModel(
+                    app.rideRepository,
+                    app.requestRepository,
+                    app.favoriteLocationRepository,
+                    app.userRepository.currentUid
+                ) as T
+            }
+        }
+    }
+
     private lateinit var mapView: MapView
+    
+    // In a real app, these would come from ViewModels
+    private var displayedRides: List<Ride> = emptyList()
+    private var displayedRequests: List<RideRequest> = emptyList()
+    private var userFavorites: List<FavoriteLocation> = emptyList()
 
     private val lisbon = GeoPoint(38.736946, -9.142685)
-
-    private val routePoints = mapOf(
-        "IST Alameda" to GeoPoint(38.7369, -9.1387),
-        "Saldanha" to GeoPoint(38.7355, -9.1455),
-        "Campo Grande" to GeoPoint(38.7602, -9.1584),
-        "Oriente" to GeoPoint(38.7677, -9.0997)
-    )
-
-    private val favorites = setOf("IST Alameda", "Campo Grande")
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_ride_map, container, false)
@@ -45,18 +69,31 @@ class RideMapFragment : Fragment() {
         mapView.controller.setZoom(13.0)
         mapView.controller.setCenter(lisbon)
 
-        addRouteMarkers()
+        observeViewModel()
 
         val etSearch = view.findViewById<EditText>(R.id.et_location_search)
         view.findViewById<Button>(R.id.btn_search).setOnClickListener {
-            val query = etSearch.text.toString().trim()
-            val point = routePoints[query]
+            val query = etSearch.text.toString().trim().lowercase()
+            val allPoints = mutableMapOf<String, GeoPoint>()
+            displayedRides.forEach { allPoints[it.origin.lowercase()] = GeoPoint(it.originLat, it.originLng) }
+            displayedRequests.forEach { allPoints[it.origin.lowercase()] = GeoPoint(it.originLat, it.originLng) }
+            userFavorites.forEach { allPoints[it.name.lowercase()] = GeoPoint(it.latitude, it.longitude) }
+
+            val point = allPoints[query]
             if (point != null) {
                 mapView.controller.animateTo(point)
                 mapView.controller.setZoom(15.5)
             } else {
-                Toast.makeText(requireContext(), "Unknown location in demo data", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Location not found on map", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        mapView.setOnLongClickListener {
+            // TODO: In a real app, show a dialog to add this point as a favorite
+            val projection = mapView.projection
+            // This is a bit complex in OSMDroid without a custom overlay, 
+            // but for now we focus on visualization.
+            false
         }
 
         view.findViewById<Button>(R.id.btn_center_lisbon).setOnClickListener {
@@ -65,17 +102,91 @@ class RideMapFragment : Fragment() {
         }
     }
 
+    private fun observeViewModel() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.rides.collect { rides ->
+                        displayedRides = rides
+                        addRouteMarkers()
+                    }
+                }
+                launch {
+                    viewModel.requests.collect { requests ->
+                        displayedRequests = requests
+                        addRouteMarkers()
+                    }
+                }
+                launch {
+                    viewModel.favorites.collect { favorites ->
+                        userFavorites = favorites
+                        addRouteMarkers()
+                    }
+                }
+            }
+        }
+    }
+
     private fun addRouteMarkers() {
         mapView.overlays.clear()
-        routePoints.forEach { (name, point) ->
+        
+        // Visualize Favorites
+        userFavorites.forEach { fav ->
+            val point = GeoPoint(fav.latitude, fav.longitude)
             val marker = Marker(mapView).apply {
                 position = point
-                title = if (favorites.contains(name)) "★ Favorite: $name" else name
+                title = "★ Favorite: ${fav.name}"
+                subDescription = fav.address
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
             }
             mapView.overlays.add(marker)
         }
+
+        // Visualize Rides
+        displayedRides.forEach { ride ->
+            addPointWithRadius(
+                GeoPoint(ride.originLat, ride.originLng),
+                500.0, // Default radius if not in model for Ride
+                "Ride Start: ${ride.origin}",
+                Color.BLUE
+            )
+        }
+
+        // Visualize Ride Requests with their specific radii
+        displayedRequests.forEach { req ->
+            addPointWithRadius(
+                GeoPoint(req.originLat, req.originLng),
+                req.originRadius,
+                "Request Origin: ${req.origin}",
+                Color.GREEN
+            )
+            addPointWithRadius(
+                GeoPoint(req.destinationLat, req.destinationLng),
+                req.destinationRadius,
+                "Request Destination: ${req.destination}",
+                Color.RED
+            )
+        }
+
         mapView.invalidate()
+    }
+
+    private fun addPointWithRadius(center: GeoPoint, radiusMeters: Double, title: String, color: Int) {
+        val marker = Marker(mapView).apply {
+            position = center
+            this.title = title
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+        }
+        mapView.overlays.add(marker)
+
+        val circle = Polygon(mapView).apply {
+            points = Polygon.pointsAsCircle(center, radiusMeters)
+            fillPaint.color = color
+            fillPaint.alpha = 30
+            outlinePaint.color = color
+            outlinePaint.strokeWidth = 2f
+        }
+        mapView.overlays.add(circle)
     }
 
     override fun onResume() {

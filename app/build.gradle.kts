@@ -80,6 +80,9 @@ dependencies {
     // ── JSON (offline queue serialisation) ───────────────────────────────────
     implementation(libs.gson)
 
+    // ── WorkManager ──────────────────────────────────────────────────────────
+    implementation(libs.androidx.work.runtime.ktx)
+
     // ── Coroutines ───────────────────────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)

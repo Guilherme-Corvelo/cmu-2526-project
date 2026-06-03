@@ -54,13 +54,23 @@ class RideDetailViewModel(
     fun loadRide(rideId: String) {
         viewModelScope.launch {
             val currentUid = userRepo.currentUid
-            val ride = rideRepo.getRide(rideId) ?: return@launch
-            _ride.value = ride
-            _isRideOwner.value = (currentUid != null && ride.driverId == currentUid)
+            
+            // Background fetch to ensure latest data
+            rideRepo.getRide(rideId)
 
-            if (currentUid != null && ride.driverId == currentUid) {
+            launch {
+                rideRepo.observeRide(rideId).collect { ride ->
+                    if (ride != null) {
+                        _ride.value = ride
+                        _isRideOwner.value = (currentUid != null && ride.driverId == currentUid)
+                        checkWeather(ride)
+                    }
+                }
+            }
+
+            if (currentUid != null) {
                 launch {
-                    rideRepo.getRideBookings(ride.id)
+                    rideRepo.getRideBookings(rideId)
                         .catch { e ->
                             android.util.Log.e("RideDetailViewModel", "Error fetching bookings", e)
                             emit(emptyList())
@@ -73,7 +83,6 @@ class RideDetailViewModel(
                         }
                 }
             }
-            checkWeather(ride)
         }
     }
 
@@ -184,7 +193,7 @@ class RideDetailViewModel(
                 }
             }
             _bookingState.value = BookingState.Loading
-            rideRepo.startRide(rideId).onSuccess {
+            rideRepo.startRide(rideId, weatherSvc).onSuccess {
                 _ride.value = _ride.value?.copy(status = RideStatus.EN_ROUTE)
                 _bookingState.value = BookingState.Success("started", false)
             }.onFailure {
@@ -327,90 +336,105 @@ class RideDetailActivity : AppCompatActivity() {
     private fun observeViewModel(rideId: String) {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // Combined flow for all state-dependent UI changes
+                combine(
+                    viewModel.ride.filterNotNull(),
+                    viewModel.isRideOwner,
+                    viewModel.weatherWarning,
+                    viewModel.pendingBookings,
+                    viewModel.joinedBookings
+                ) { ride, isOwner, warning, pending, joined ->
+                    // 1. Update core UI data
+                    populateUI(ride, rideId)
 
-                launch {
-                    combine(viewModel.ride.filterNotNull(), viewModel.isRideOwner) { ride, isOwner ->
-                        ride to isOwner
-                    }.collect { (ride, isOwner) ->
-                        populateUI(ride, rideId)
-                        val isCancelled = ride.status == RideStatus.CANCELLED
-                        val isCompleted = ride.status == RideStatus.COMPLETED
-                        val isEnRoute = ride.status == RideStatus.EN_ROUTE
+                    val isCancelled = ride.status == RideStatus.CANCELLED
+                    val isCompleted = ride.status == RideStatus.COMPLETED
+                    val isEnRoute = ride.status == RideStatus.EN_ROUTE
+                    val isOpenOrFull = ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL
 
-                        if (isOwner) {
-                            btnBook.visibility = View.GONE
-                            cbRecurringBooking.visibility = View.GONE
-                            cvWeatherPrefs.visibility = View.GONE
-                            
-                            btnCancelRide.visibility = if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL) View.VISIBLE else View.GONE
-                            btnStartRide.visibility = if (ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL) View.VISIBLE else View.GONE
-                            btnFinishRide.visibility = if (isEnRoute) View.VISIBLE else View.GONE
-                        } else {
-                            btnBook.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
-                            btnCancelRide.visibility = View.GONE
-                            btnStartRide.visibility = View.GONE
-                            btnFinishRide.visibility = View.GONE
-                            cbRecurringBooking.visibility = if (ride.periodic && !isCancelled && !isCompleted) View.VISIBLE else View.GONE
-                            cvWeatherPrefs.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
+                    // 2. Weather Warning UI
+                    cvWeatherWarning.visibility = if (warning == WeatherWarning.WILL_CANCEL) View.VISIBLE else View.GONE
+                    if (warning == WeatherWarning.WILL_CANCEL) {
+                        val cond = ride.weatherCondition
+                        val thresholdValue = cond.threshold ?: (if (cond.type == WeatherType.TOO_HOT) 35.0 else 5.0)
+                        val conditionDetail = when (cond.type) {
+                            WeatherType.TOO_HOT -> "high temperatures (Threshold: ${thresholdValue}°C)"
+                            WeatherType.TOO_COLD -> "low temperatures (Threshold: ${thresholdValue}°C)"
+                            WeatherType.RAIN -> "rain"
+                            else -> "weather conditions"
                         }
+                        tvWeatherText.text = "⚠ Safety Note: This ride currently violates weather safety rules for $conditionDetail. It will remain active until departure time in case the forecast improves, but booking is currently restricted."
                     }
-                }
-                launch {
-                    viewModel.pendingBookings.collect { requests ->
-                        if (!viewModel.isRideOwner.value || requests.isEmpty()) {
+
+                    // 3. Status-based Visibilities & Button Text
+                    btnBook.text = when (ride.status) {
+                        RideStatus.CANCELLED -> "Ride Cancelled"
+                        RideStatus.COMPLETED -> "Ride Completed"
+                        RideStatus.EN_ROUTE -> "Ride in Progress"
+                        else -> "Book Ride"
+                    }
+
+                    if (isOwner) {
+                        btnBook.visibility = View.GONE
+                        cbRecurringBooking.visibility = View.GONE
+                        cvWeatherPrefs.visibility = View.GONE
+                        
+                        btnCancelRide.visibility = if (isOpenOrFull) View.VISIBLE else View.GONE
+                        btnStartRide.visibility = if (isOpenOrFull) View.VISIBLE else View.GONE
+                        btnFinishRide.visibility = if (isEnRoute) View.VISIBLE else View.GONE
+
+                        // Pending Requests Logic
+                        if (pending.isEmpty()) {
                             tvRequests.visibility = View.GONE
                             layoutRequestActions.visibility = View.GONE
-                            btnViewPassengerProfile.visibility = View.GONE
                             selectedPendingBooking = null
                         } else {
-                            val first = requests.first()
+                            val first = pending.first()
                             selectedPendingBooking = first
                             tvRequests.visibility = View.VISIBLE
                             layoutRequestActions.visibility = View.VISIBLE
-                            btnViewPassengerProfile.visibility = View.VISIBLE
-                            val count = requests.size
+                            val count = pending.size
                             val seatsLabel = if (first.seatsRequested == 1) "seat" else "seats"
                             val suffix = if (count > 1) " (+${count - 1} more)" else ""
                             tvRequests.text = "Pending request: ${first.passengerName} (${first.seatsRequested} $seatsLabel)$suffix"
                             btnAcceptRequest.setOnClickListener { viewModel.respondToBooking(first.id, true) }
                             btnRejectRequest.setOnClickListener { viewModel.respondToBooking(first.id, false) }
+                            cvWeatherPrefs.visibility = View.GONE
                         }
-                    }
-                }
-                launch {
-                    viewModel.joinedBookings.collect { joined ->
-                        if (viewModel.isRideOwner.value && joined.isNotEmpty()) {
+
+                        // Profile button state for owner
+                        btnViewPassengerProfile.visibility = if (pending.isNotEmpty() || joined.isNotEmpty()) View.VISIBLE else View.GONE
+                        if (joined.isNotEmpty()) {
                             val first = joined.first()
                             val more = if (joined.size > 1) " (+${joined.size - 1} more)" else ""
-                            btnViewPassengerProfile.visibility = View.VISIBLE
                             btnViewPassengerProfile.text = "View joined: ${first.passengerName}$more"
-                        } else if (viewModel.isRideOwner.value) {
+                        } else if (pending.isNotEmpty()) {
                             btnViewPassengerProfile.text = "View passenger profile"
                         }
+                    } else {
+                        btnBook.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
+                        btnCancelRide.visibility = View.GONE
+                        btnStartRide.visibility = View.GONE
+                        btnFinishRide.visibility = View.GONE
+                        cbRecurringBooking.visibility = if (ride.periodic && !isCancelled && !isCompleted) View.VISIBLE else View.GONE
+                        cvWeatherPrefs.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
+                        tvRequests.visibility = View.GONE
+                        layoutRequestActions.visibility = View.GONE
+                        btnViewPassengerProfile.visibility = View.GONE
                     }
-                }
 
-                launch {
-                    viewModel.weatherWarning.collect { warning ->
-                        val ride = viewModel.ride.value
-                        cvWeatherWarning.visibility =
-                            if (warning == WeatherWarning.WILL_CANCEL) View.VISIBLE else View.GONE
-                        
-                        if (warning == WeatherWarning.WILL_CANCEL && ride != null) {
-                            val cond = ride.weatherCondition
-                            val thresholdValue = cond.threshold ?: (if (cond.type == WeatherType.TOO_HOT) 35.0 else 5.0)
-                            val conditionDetail = when (cond.type) {
-                                WeatherType.TOO_HOT -> "high temperatures (Threshold: ${thresholdValue}°C)"
-                                WeatherType.TOO_COLD -> "low temperatures (Threshold: ${thresholdValue}°C)"
-                                WeatherType.RAIN -> "rain"
-                                else -> "weather conditions"
-                            }
-
-                            tvWeatherText.text = "⚠ Booking Disabled: This ride currently violates the driver's safety rules for $conditionDetail. You cannot book unless the forecast improves."
-                            btnBook.isEnabled = false
+                    // 4. Safety locks (Last word on enablements)
+                    if (warning == WeatherWarning.WILL_CANCEL) {
+                        btnBook.isEnabled = false
+                        btnStartRide.isEnabled = false
+                    } else {
+                        if (isOwner) {
+                            btnStartRide.isEnabled = isOpenOrFull
+                        } else {
+                            btnBook.isEnabled = ride.seatsAvailable > 0 && isOpenOrFull
                         }
                     }
-                }
+                }.collect()
 
                 launch {
                     viewModel.bookingState.collect { state ->
@@ -456,6 +480,7 @@ class RideDetailActivity : AppCompatActivity() {
     }
 
     private fun populateUI(ride: Ride, rideId: String) {
+        findViewById<View>(R.id.layout_content).visibility = View.VISIBLE
         title = "Ride detail"
         tvDriverName.text = ride.driverName
         tvRating.text     = "★ %.1f".format(ride.driverRating)
@@ -469,12 +494,8 @@ class RideDetailActivity : AppCompatActivity() {
             tvPeriodicInfo.text = if (ride.periodicLabel.isNotBlank()) 
                 "This is a periodic ride (${ride.periodicLabel})" 
                 else "This is a periodic ride"
-            
-            // Re-check visibility based on updated isRideOwner flow
-            cbRecurringBooking.visibility = if (viewModel.isRideOwner.value) View.GONE else View.VISIBLE
         } else {
             tvPeriodicInfo.visibility = View.GONE
-            cbRecurringBooking.visibility = View.GONE
         }
 
         val app = application as SharISTApp
@@ -485,7 +506,6 @@ class RideDetailActivity : AppCompatActivity() {
             network     = app.networkMonitor
         )
 
-        btnBook.isEnabled = ride.seatsAvailable > 0 && !viewModel.isRideOwner.value
         btnBook.setOnClickListener {
             if (ride.seatsAvailable > 0) {
                 viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
@@ -517,28 +537,6 @@ class RideDetailActivity : AppCompatActivity() {
                 .setPositiveButton("Finish") { _, _ -> viewModel.finishRide(rideId) }
                 .setNegativeButton("No", null)
                 .show()
-        }
-
-        if (ride.status == RideStatus.CANCELLED) {
-            btnBook.isEnabled = false
-            btnBook.text = "Ride Cancelled"
-            btnCancelRide.visibility = View.GONE
-            btnStartRide.visibility = View.GONE
-            btnFinishRide.visibility = View.GONE
-        } else if (ride.status == RideStatus.COMPLETED) {
-            btnBook.isEnabled = false
-            btnBook.text = "Ride Completed"
-            btnCancelRide.visibility = View.GONE
-            btnStartRide.visibility = View.GONE
-            btnFinishRide.visibility = View.GONE
-        } else if (ride.status == RideStatus.EN_ROUTE) {
-            btnBook.isEnabled = false
-            btnBook.text = "Ride in Progress"
-            btnCancelRide.visibility = View.GONE
-            btnStartRide.visibility = View.GONE
-            if (viewModel.isRideOwner.value) {
-                btnFinishRide.visibility = View.VISIBLE
-            }
         }
     }
 

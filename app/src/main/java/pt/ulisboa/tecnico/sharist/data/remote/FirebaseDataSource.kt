@@ -2,6 +2,7 @@ package pt.ulisboa.tecnico.sharist.data.remote
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.DocumentReference
@@ -26,8 +27,8 @@ class FirebaseDataSource(
 
     override val currentUid: String? get() = auth.currentUser?.uid
 
-    override suspend fun signIn(email: String, password: String): com.google.firebase.auth.AuthResult? = auth.signInWithEmailAndPassword(email, password).await()
-    override suspend fun register(email: String, password: String): com.google.firebase.auth.AuthResult? = auth.createUserWithEmailAndPassword(email, password).await()
+    override suspend fun signIn(email: String, pass: String): com.google.firebase.auth.AuthResult? = auth.signInWithEmailAndPassword(email, pass).await()
+    override suspend fun register(email: String, pass: String): com.google.firebase.auth.AuthResult? = auth.createUserWithEmailAndPassword(email, pass).await()
     override fun signOut() = auth.signOut()
     override suspend fun createUserProfile(user: User) { 
         val hashedUid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(user.uid)
@@ -46,7 +47,7 @@ class FirebaseDataSource(
     override fun observeRides(filter: RideFilter): Flow<List<Ride>> = callbackFlow {
         // We observe all OPEN and FULL rides because a FULL periodic ride 
         // will transition to a new OPEN one once completed.
-        var query: Query = ridesCol.whereIn("status", listOf(RideStatus.OPEN.name, RideStatus.FULL.name))
+        val query: Query = ridesCol.whereIn("status", listOf(RideStatus.OPEN.name, RideStatus.FULL.name))
         
         val listener = query.addSnapshotListener { snap, err ->
             if (err != null) close(err)
@@ -94,7 +95,7 @@ class FirebaseDataSource(
         return ref.id
     }
 
-    override suspend fun cancelRide(rideId: String) {
+    override suspend fun cancelRide(rideId: String, reschedule: Boolean) {
         val uid = currentUid ?: return
         val bookingsSnapshot = bookingsCol.whereEqualTo("rideId", rideId).whereEqualTo("driverId", uid).get().await()
 
@@ -102,7 +103,8 @@ class FirebaseDataSource(
             // 1. ALL READS
             val rideRef = ridesCol.document(rideId)
             val rideSnap = tx.get(rideRef)
-            if (!rideSnap.exists() || rideSnap.getString("driverId") != uid) return@runTransaction
+            val ride = rideSnap.toObject(Ride::class.java) ?: return@runTransaction
+            if (ride.driverId != uid) return@runTransaction
 
             val bookingsToCancel = mutableListOf<Pair<DocumentReference, Booking>>()
             val passengerBalances = mutableMapOf<String, Double>()
@@ -131,6 +133,9 @@ class FirebaseDataSource(
             // 2. ALL WRITES
             tx.update(rideRef, "status", RideStatus.CANCELLED.name)
 
+            val nextRideRef = if (reschedule && ride.periodic) ridesCol.document() else null
+            val nextDate = if (reschedule && ride.periodic) calculateNextOccurrence(ride.departureTime, ride.periodicLabel) else null
+
             for ((bRef, booking) in bookingsToCancel) {
                 tx.update(bRef, "status", BookingStatus.CANCELLED.name)
 
@@ -143,9 +148,37 @@ class FirebaseDataSource(
                     tx.update(pRef, "balance", newBal)
                     tx.update(bRef, "passengerRefunded", true)
                     
-                    // Update local map in case the same passenger has multiple bookings (rare but possible)
+                    // Update local map in case the same passenger has multiple bookings
                     passengerBalances[pId] = newBal
                 }
+
+                // Reschedule recurring bookings if requested
+                if (reschedule && ride.periodic && booking.recurring) {
+                    val nextBookingRef = bookingsCol.document()
+                    val nextBooking = booking.copy(
+                        id = nextBookingRef.id,
+                        rideId = nextRideRef!!.id,
+                        status = BookingStatus.PENDING,
+                        departureTime = nextDate,
+                        createdAt = null,
+                        passengerReviewed = false,
+                        driverReviewed = false,
+                        driverPaid = false,
+                        passengerRefunded = false
+                    )
+                    tx.set(nextBookingRef, nextBooking)
+                }
+            }
+
+            if (reschedule && ride.periodic && nextRideRef != null) {
+                val nextRide = ride.copy(
+                    id = nextRideRef.id,
+                    status = RideStatus.OPEN,
+                    departureTime = nextDate,
+                    seatsAvailable = ride.seatsTotal,
+                    createdAt = null
+                )
+                tx.set(nextRideRef, nextRide)
             }
         }.await()
     }
@@ -369,7 +402,7 @@ class FirebaseDataSource(
                 BookingStatus.EN_ROUTE -> current == BookingStatus.ACCEPTED
                 BookingStatus.PICKED_UP -> current == BookingStatus.EN_ROUTE
                 BookingStatus.COMPLETED -> current == BookingStatus.PICKED_UP || current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.COMPLETED
-                BookingStatus.CANCELLED -> (current != BookingStatus.COMPLETED && current != BookingStatus.REJECTED) || current == BookingStatus.CANCELLED
+                BookingStatus.CANCELLED -> (current != BookingStatus.COMPLETED && current != BookingStatus.REJECTED)
                 else -> false
             }
             if (!valid) return@runTransaction
@@ -553,15 +586,15 @@ class FirebaseDataSource(
         
         return requestId
     }
-    override suspend fun cancelRequest(requestId: String) {
-        updateRequestStatus(requestId, RequestStatus.CANCELLED)
+    override suspend fun cancelRequest(requestId: String, reschedule: Boolean) {
+        updateRequestStatus(requestId, RequestStatus.CANCELLED, reschedule)
     }
 
     override suspend fun completeRequest(requestId: String) {
-        updateRequestStatus(requestId, RequestStatus.COMPLETED)
+        updateRequestStatus(requestId, RequestStatus.COMPLETED, false)
     }
 
-    override suspend fun updateRequestStatus(requestId: String, status: RequestStatus) {
+    override suspend fun updateRequestStatus(requestId: String, status: RequestStatus, reschedule: Boolean) {
         db.runTransaction { tx ->
             // 1. ALL READS
             val ref = requestsCol.document(requestId)
@@ -597,10 +630,31 @@ class FirebaseDataSource(
                 return@runTransaction
             }
 
+            // Reschedule logic for periodic requests
+            if (reschedule && req.periodic && status == RequestStatus.CANCELLED) {
+                val nextRef = requestsCol.document()
+                val nextDate = calculateNextOccurrence(req.requestedTime, req.periodicLabel)
+                val nextReq = req.copy(
+                    id = nextRef.id,
+                    status = RequestStatus.OPEN,
+                    requestedTime = nextDate,
+                    driverId = null,
+                    driverName = null,
+                    driverRating = 5.0,
+                    passengerPaid = false,
+                    passengerRefunded = false,
+                    driverPaid = false,
+                    driverReviewed = false,
+                    passengerReviewed = false,
+                    createdAt = null
+                )
+                tx.set(nextRef, nextReq)
+            }
+
             // Allow idempotent transitions for auto-refund
             val valid = when (status) {
                 RequestStatus.COMPLETED -> current != RequestStatus.CANCELLED
-                RequestStatus.CANCELLED -> current != RequestStatus.COMPLETED || current == RequestStatus.CANCELLED
+                RequestStatus.CANCELLED -> current != RequestStatus.COMPLETED
                 else -> true
             }
             if (!valid) return@runTransaction
@@ -618,11 +672,20 @@ class FirebaseDataSource(
             if (status == RequestStatus.COMPLETED) {
                 tx.update(ref, "origin", "anonymized")
                 tx.update(ref, "destination", "anonymized")
-                // tx.update(ref, "passengerId", "anonymized") // Removed to fix My Rides visibility
             }
 
             tx.update(ref, "status", status.name)
         }.await()
+
+        if (status == RequestStatus.CANCELLED) {
+             val bookings = bookingsCol
+                .whereEqualTo("rideId", "requested_$requestId")
+                .get()
+                .await()
+            for (doc in bookings.documents) {
+                doc.reference.delete().await()
+            }
+        }
     }
 
     override suspend fun denyRequest(requestId: String, driverId: String) {
@@ -652,7 +715,23 @@ class FirebaseDataSource(
             tx.update(ref, "driverName", null)
             tx.update(ref, "driverRating", 5.0)
             tx.update(ref, "deniedDrivers", currentDeniedDrivers)
+
+            // Also delete the associated booking created during acceptance
+            // We search for bookings where rideId == "requested_$requestId"
         }.await()
+
+        // Transactions can't perform queries easily, so we handle the booking deletion separately 
+        // or we need to find the booking ID. 
+        // Since we don't store the booking ID in the request, we query for it.
+        val bookings = bookingsCol
+            .whereEqualTo("rideId", "requested_$requestId")
+            .whereEqualTo("driverId", driverId)
+            .get()
+            .await()
+        
+        for (doc in bookings.documents) {
+            doc.reference.delete().await()
+        }
     }
 
     override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
@@ -788,6 +867,51 @@ class FirebaseDataSource(
         }
     }
 
+    override suspend fun getAllUsers(): List<User> = 
+        usersCol.get().await().toObjects(User::class.java).filterNotNull()
+
+    override suspend fun getReviewsForUserSync(userId: String): List<Review> =
+        reviewsCol.whereEqualTo("driverId", userId).get().await().toObjects(Review::class.java).filterNotNull()
+
+    override suspend fun flagReviewAsOutlier(reviewId: String) {
+        reviewsCol.document(reviewId).update("isOutlier", true).await()
+    }
+
+    override suspend fun updateUserTrustScore(userId: String, trustScore: Double) {
+        usersCol.document(userId).update("trustScore", trustScore).await()
+    }
+
+    override fun observeFavorites(userId: String): Flow<List<FavoriteLocation>> = callbackFlow {
+        val listener = db.collection("favorites")
+            .whereEqualTo("userId", userId)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    if (err.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                        android.util.Log.w("FirebaseDataSource", "Permission denied for favorites, likely missing rules. Emitting empty list.")
+                        trySend(emptyList())
+                    } else {
+                        close(err)
+                    }
+                } else {
+                    trySend(snap?.toObjects(FavoriteLocation::class.java)?.filterNotNull() ?: emptyList())
+                }
+            }
+        activeListeners.add(listener)
+        awaitClose {
+            listener.remove()
+            activeListeners.remove(listener)
+        }
+    }
+
+    override suspend fun addFavorite(favorite: FavoriteLocation) {
+        val ref = if (favorite.id.isBlank()) db.collection("favorites").document() else db.collection("favorites").document(favorite.id)
+        ref.set(favorite.copy(id = ref.id)).await()
+    }
+
+    override suspend fun deleteFavorite(id: String) {
+        db.collection("favorites").document(id).delete().await()
+    }
+
     override suspend fun processRideReputation(rideId: String) {
         // Implementation for outlier detection and reputation update
         val rideRef = ridesCol.document(rideId)
@@ -800,7 +924,6 @@ class FirebaseDataSource(
 
         db.runTransaction { tx ->
             val ratings = reviews.map { it.rating.toDouble() }
-            val stdDev = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.calculateStdDev(ratings)
 
             var validSum = 0.0
             var validCount = 0

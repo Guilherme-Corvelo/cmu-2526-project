@@ -43,6 +43,7 @@ class RideAdapter(
         private val ivMeteredHint: ImageView = itemView.findViewById(R.id.iv_metered_hint)
         private val tvPeriodicBadge: TextView = itemView.findViewById(R.id.tv_periodic_badge)
         private val tvPendingBadge: TextView = itemView.findViewById(R.id.tv_pending_badge)
+        private val tvWeatherBadge: TextView = itemView.findViewById(R.id.tv_weather_badge)
         private val btnCancel: Button? = itemView.findViewById(R.id.btn_cancel_ride)
         private val btnDetails: Button? = itemView.findViewById(R.id.btn_details)
 
@@ -62,6 +63,9 @@ class RideAdapter(
             } else {
                 tvPeriodicBadge.text = "Periodic"
             }
+
+            // Weather Warning Badge
+            tvWeatherBadge.visibility = if (ride.weatherWarning) View.VISIBLE else View.GONE
 
             // Handle Pending Badges (Sync or Requests)
             val isDriverView = currentUid != null && ride.driverId == currentUid
