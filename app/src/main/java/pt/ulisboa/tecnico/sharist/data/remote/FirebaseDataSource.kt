@@ -775,11 +775,27 @@ class FirebaseDataSource(
         }.await()
 
         if (status == RequestStatus.CANCELLED) {
-             val bookings = bookingsCol
-                .whereEqualTo("rideId", "requested_$requestId")
-                .get()
-                .await()
-            for (doc in bookings.documents) {
+            deleteSyntheticRequestBookingsForCurrentUser(requestId)
+        }
+    }
+
+    private suspend fun deleteSyntheticRequestBookingsForCurrentUser(requestId: String) {
+        val uid = currentUid ?: return
+        val requestRideId = "requested_$requestId"
+        val driverBookings = bookingsCol
+            .whereEqualTo("rideId", requestRideId)
+            .whereEqualTo("driverId", uid)
+            .get()
+            .await()
+        val passengerBookings = bookingsCol
+            .whereEqualTo("rideId", requestRideId)
+            .whereEqualTo("passengerId", uid)
+            .get()
+            .await()
+
+        val deletedBookingIds = mutableSetOf<String>()
+        for (doc in driverBookings.documents + passengerBookings.documents) {
+            if (deletedBookingIds.add(doc.id)) {
                 doc.reference.delete().await()
             }
         }
