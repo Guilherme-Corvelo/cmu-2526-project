@@ -44,7 +44,61 @@ class MockRemoteDataSource : RemoteDataSource {
         val hashedPid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(review.passengerId ?: "")
         val finalReview = review.copy(hashedPassengerId = hashedPid)
         DemoRideStore.addReview(finalReview)
-        return finalReview.rideId.ifBlank { "mock_ride" }
+        maybePublishNextPeriodicDemoRequest(review.requestId)
+        return finalReview.rideId.ifBlank { review.requestId.ifBlank { "mock_ride" } }
+    }
+
+    private fun maybePublishNextPeriodicDemoRequest(requestId: String) {
+        val uid = currentUid ?: return
+        val req = DemoRequestStore.requests.value.firstOrNull { it.id == requestId } ?: return
+        if (!req.periodic || req.status != RequestStatus.COMPLETED) return
+        if (uid != req.driverId && uid != req.passengerId) return
+        if (DemoRequestStore.requests.value.any { it.previousRequestId == req.id }) return
+
+        val reviewedRequest = if (uid == req.driverId) {
+            req.copy(passengerReviewed = true)
+        } else {
+            req.copy(driverReviewed = true)
+        }
+        val nextRequest = reviewedRequest.copy(
+            id = "mock_req_${UUID.randomUUID()}",
+            status = RequestStatus.OPEN,
+            requestedTime = calculateNextOccurrence(reviewedRequest.requestedTime, reviewedRequest.periodicLabel),
+            previousRequestId = reviewedRequest.id,
+            driverId = null,
+            hashedDriverId = "",
+            driverName = null,
+            driverRating = 5.0,
+            passengerPaid = false,
+            passengerRefunded = false,
+            driverPaid = false,
+            driverReviewed = false,
+            passengerReviewed = false,
+            deniedBy = emptyList(),
+            deniedDrivers = emptyList(),
+            createdAt = java.util.Date()
+        )
+        DemoRequestStore.requests.value = listOf(nextRequest) + DemoRequestStore.requests.value.map {
+            if (it.id == reviewedRequest.id) reviewedRequest.copy(origin = "anonymized", destination = "anonymized") else it
+        }
+    }
+
+    private fun calculateNextOccurrence(currentDate: java.util.Date?, label: String): java.util.Date {
+        val cal = java.util.Calendar.getInstance()
+        if (currentDate != null) cal.time = currentDate
+        when (label.lowercase()) {
+            "daily" -> cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            "weekdays" -> {
+                do {
+                    cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                } while (cal.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SATURDAY || cal.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SUNDAY)
+            }
+            "weekly" -> cal.add(java.util.Calendar.WEEK_OF_YEAR, 1)
+            "biweekly" -> cal.add(java.util.Calendar.WEEK_OF_YEAR, 2)
+            "monthly" -> cal.add(java.util.Calendar.MONTH, 1)
+            else -> cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        return cal.time
     }
 
     override fun observeReviewsForUser(userId: String): Flow<List<Review>> =

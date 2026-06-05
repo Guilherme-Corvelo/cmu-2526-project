@@ -31,6 +31,7 @@ class ProfileFragment : Fragment() {
     private val app by lazy { requireActivity().application as SharISTApp }
     private val userRepo by lazy { app.userRepository }
     private val requestRepo by lazy { app.requestRepository }
+    private val session by lazy { app.sessionManager }
 
     private var currentProfile: User? = null
     private var isOwnProfile: Boolean = false
@@ -199,7 +200,11 @@ class ProfileFragment : Fragment() {
         tvName.text = user.displayName
         tvEmail.text = user.email
         tvRole.text = "Role: ${if (user.driver) "Driver" else "Passenger"} • Reliability: %.0f%%".format(user.trustScore * 100)
-        tvBalance.text = "Balance: €%.2f".format(user.balance)
+        val viewingPassengerAsDriver = !isOwnProfile && session.role == SessionManager.ROLE_DRIVER && !user.driver
+        tvBalance.visibility = if (viewingPassengerAsDriver) View.GONE else View.VISIBLE
+        if (!viewingPassengerAsDriver) {
+            tvBalance.text = "Balance: €%.2f".format(user.balance)
+        }
         tvRatingSummary.text = "Loading rating..."
         tvHistogram.text = ""
         tvVehicles.text = if (user.driver) {
