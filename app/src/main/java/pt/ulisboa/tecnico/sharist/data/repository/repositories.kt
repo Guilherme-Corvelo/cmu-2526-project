@@ -742,6 +742,7 @@ class UserRepository(private val remote: RemoteDataSource) {
     suspend fun register(email: String, password: String) = remote.register(email, password)
     fun signOut() = remote.signOut()
     suspend fun createProfile(user: User) = remote.createUserProfile(user)
+    suspend fun updateProfile(user: User) = remote.updateUserProfile(user)
     suspend fun getUser(uid: String) = remote.getUser(uid)
     suspend fun updateBalance(uid: String, delta: Double) = remote.updateBalance(uid, delta)
 }

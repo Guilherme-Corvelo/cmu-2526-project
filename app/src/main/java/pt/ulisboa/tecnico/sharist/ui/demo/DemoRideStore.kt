@@ -8,6 +8,8 @@ import java.util.Date
 import java.util.UUID
 
 object DemoRideStore {
+    private const val LATE_CANCELLATION_TRUST_PENALTY = 0.10
+
     private val DEMO_CLIENT = User(
         uid = DemoRequestStore.DEMO_CLIENT_ID,
         displayName = DemoRequestStore.DEMO_CLIENT_NAME,
@@ -352,6 +354,22 @@ object DemoRideStore {
         return id
     }
 
+    private fun applyLateCancellationPenalty(passengerId: String?) {
+        val pId = passengerId ?: return
+        users[pId]?.let { user ->
+            users[pId] = user.copy(trustScore = (user.trustScore - LATE_CANCELLATION_TRUST_PENALTY).coerceAtLeast(0.0))
+        }
+    }
+
+    private fun isLatePassengerCancellation(booking: Booking, currentUid: String?): Boolean {
+        if (currentUid == null || currentUid != booking.passengerId) return false
+        val ride = getRide(booking.rideId)
+        val departure = ride?.departureTime ?: booking.departureTime ?: return false
+        val limitMinutes = ride?.cancellationLimitMinutes ?: 60
+        val penaltyFreeUntil = Date(departure.time - limitMinutes.coerceAtLeast(0) * 60_000L)
+        return Date().after(penaltyFreeUntil)
+    }
+
     fun updateBookingStatus(bookingId: String, status: BookingStatus, currentUid: String? = null) {
         bookingsFlow.value = bookingsFlow.value.map { booking ->
             if (booking.id == bookingId) {
@@ -369,6 +387,12 @@ object DemoRideStore {
                 if (!valid) return@map booking
 
                 var updated = booking.copy(status = status)
+                val latePassengerCancellation = status == BookingStatus.CANCELLED &&
+                    (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP) &&
+                    isLatePassengerCancellation(booking, currentUid)
+                if (latePassengerCancellation) {
+                    applyLateCancellationPenalty(booking.passengerId)
+                }
                 
                 if (status == BookingStatus.ACCEPTED) {
                     val ride = getRide(booking.rideId)
@@ -389,7 +413,9 @@ object DemoRideStore {
                         updated = updated.copy(driverPaid = true)
                     }
                     // Passenger already paid upfront
-                } else if ((status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) && 
+                }
+
+                if ((status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) &&
                     booking.passengerPaid && !booking.passengerRefunded) {
                     
                     val pId = booking.passengerId
@@ -397,7 +423,9 @@ object DemoRideStore {
                         updateBalance(pId, booking.totalPrice)
                         updated = updated.copy(passengerRefunded = true)
                     }
-                } else if (status == BookingStatus.CANCELLED && (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)) {
+                }
+
+                if (status == BookingStatus.CANCELLED && (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)) {
                     // Return seats
                     incrementSeats(booking.rideId, booking.seatsRequested)
                 }

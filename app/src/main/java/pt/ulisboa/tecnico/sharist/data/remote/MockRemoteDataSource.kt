@@ -30,6 +30,10 @@ class MockRemoteDataSource : RemoteDataSource {
         DemoRideStore.createOrUpdateUser(user)
     }
 
+    override suspend fun updateUserProfile(user: User) {
+        DemoRideStore.createOrUpdateUser(user)
+    }
+
     override suspend fun getUser(uid: String): User? = DemoRideStore.getUser(uid)
 
     override suspend fun updateBalance(uid: String, delta: Double) {
@@ -146,11 +150,21 @@ class MockRemoteDataSource : RemoteDataSource {
                             DemoRideStore.updateBalance(updated.driverId!!, updated.estimatedPrice)
                             updated = updated.copy(driverPaid = true)
                         }
-                    } else if (status == RequestStatus.CANCELLED && updated.passengerPaid && !updated.passengerRefunded) {
-                        // Passenger gets refund
+                    } else if (status == RequestStatus.CANCELLED) {
                         if (currentUid == updated.passengerId) {
-                            DemoRideStore.updateBalance(updated.passengerId ?: "", updated.estimatedPrice)
-                            updated = updated.copy(passengerRefunded = true)
+                            if (updated.passengerPaid && !updated.passengerRefunded) {
+                                DemoRideStore.updateBalance(updated.passengerId ?: "", updated.estimatedPrice)
+                                updated = updated.copy(passengerRefunded = true)
+                            }
+                            val penaltyFreeUntil = updated.requestedTime?.let { java.util.Date(it.time - 60 * 60_000L) }
+                            if ((req.status == RequestStatus.ACCEPTED || req.status == RequestStatus.EN_ROUTE || req.status == RequestStatus.PICKED_UP) &&
+                                penaltyFreeUntil != null && java.util.Date().after(penaltyFreeUntil)
+                            ) {
+                                val user = DemoRideStore.getUser(updated.passengerId ?: "")
+                                if (user != null) {
+                                    DemoRideStore.updateUserTrustScore(user.uid, (user.trustScore - 0.10).coerceAtLeast(0.0))
+                                }
+                            }
                         }
                     }
                     updated

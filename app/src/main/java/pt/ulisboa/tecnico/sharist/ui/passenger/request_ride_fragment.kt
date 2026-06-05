@@ -77,6 +77,12 @@ class RequestRideFragment : Fragment() {
         val tvEstimatedPrice = view.findViewById<TextView>(R.id.tv_estimated_price)
         val tvSelectedTime = view.findViewById<TextView>(R.id.tv_selected_time)
         val tvMapStatus = view.findViewById<TextView>(R.id.tv_map_status)
+        val etOriginRadius = view.findViewById<EditText>(R.id.et_origin_radius)
+        val etDestinationRadius = view.findViewById<EditText>(R.id.et_destination_radius)
+        val etToleranceBefore = view.findViewById<EditText>(R.id.et_tolerance_before)
+        val etToleranceAfter = view.findViewById<EditText>(R.id.et_tolerance_after)
+        val switchPeriodic = view.findViewById<CompoundButton>(R.id.switch_periodic_request)
+        val spinnerPeriodicity = view.findViewById<Spinner>(R.id.spinner_request_periodicity)
         val spinnerWeather = view.findViewById<Spinner>(R.id.spinner_weather)
         val layoutThreshold = view.findViewById<View>(R.id.layout_threshold)
         val etThreshold = view.findViewById<EditText>(R.id.et_threshold)
@@ -312,6 +318,12 @@ class RequestRideFragment : Fragment() {
             }
         }
 
+        val periodicLabels = listOf("Daily", "Weekdays", "Weekly", "Biweekly", "Monthly")
+        spinnerPeriodicity.adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, periodicLabels)
+        switchPeriodic.setOnCheckedChangeListener { _, isChecked ->
+            spinnerPeriodicity.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
         // Listeners
         val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -395,7 +407,13 @@ class RequestRideFragment : Fragment() {
                 destination = destination,
                 destinationLat = destinationPoint.latitude,
                 destinationLng = destinationPoint.longitude,
+                originRadius = etOriginRadius.text.toString().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 500.0,
+                destinationRadius = etDestinationRadius.text.toString().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 500.0,
                 requestedTime = selectedTime.time,
+                timeToleranceBefore = etToleranceBefore.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 15,
+                timeToleranceAfter = etToleranceAfter.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 15,
+                periodic = switchPeriodic.isChecked,
+                periodicLabel = if (switchPeriodic.isChecked) periodicLabels[spinnerPeriodicity.selectedItemPosition] else "",
                 estimatedPrice = estimatedPrice,
                 status = RequestStatus.OPEN,
                 weatherCondition = WeatherCondition(
