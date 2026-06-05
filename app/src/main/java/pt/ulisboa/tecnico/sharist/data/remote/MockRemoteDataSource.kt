@@ -198,6 +198,7 @@ class MockRemoteDataSource : RemoteDataSource {
                     req.copy(
                         status = RequestStatus.OPEN,
                         driverId = null,
+                        hashedDriverId = "",
                         driverName = null,
                         driverRating = 5.0
                     )
@@ -247,6 +248,7 @@ class MockRemoteDataSource : RemoteDataSource {
                 req.copy(
                     status = RequestStatus.OPEN,
                     driverId = null,
+                    hashedDriverId = "",
                     driverName = null,
                     driverRating = 5.0,
                     deniedDrivers = req.deniedDrivers + driverId

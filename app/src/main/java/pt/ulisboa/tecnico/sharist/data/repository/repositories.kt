@@ -668,6 +668,36 @@ class RideRequestRepository(
         }
     }
 
+    suspend fun releaseAcceptedRequest(requestId: String): Result<Unit> {
+        fun RideRequestEntity.released(isPending: Boolean) = copy(
+            status = RequestStatus.OPEN.name,
+            driverId = null,
+            hashedDriverId = "",
+            driverName = null,
+            driverRating = 5.0,
+            isPending = isPending
+        )
+
+        if (!network.isConnected) {
+            local.requestDao.getById(requestId)?.let {
+                local.requestDao.upsertOne(it.released(isPending = true))
+                local.pendingDao.insert(PendingOperation(
+                    type = "UPDATE_REQUEST_STATUS",
+                    payload = gson.toJson(mapOf("requestId" to requestId, "status" to RequestStatus.CANCELLED.name))
+                ))
+                return Result.success(Unit)
+            }
+            return Result.failure(Exception("Request not found locally"))
+        }
+
+        return runCatching {
+            remote.updateRequestStatus(requestId, RequestStatus.CANCELLED)
+            local.requestDao.getById(requestId)?.let {
+                local.requestDao.upsertOne(it.released(isPending = false))
+            }
+        }
+    }
+
     suspend fun updateRequestStatus(requestId: String, status: RequestStatus): Result<Unit> {
         val localRequest = local.requestDao.getById(requestId)?.toDomain()
         val movingForward = status == RequestStatus.EN_ROUTE ||

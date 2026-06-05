@@ -707,6 +707,7 @@ class FirebaseDataSource(
             if (status == RequestStatus.CANCELLED && uid == req.driverId && req.driverId != null) {
                 tx.update(ref, "status", RequestStatus.OPEN.name)
                 tx.update(ref, "driverId", null)
+                tx.update(ref, "hashedDriverId", "")
                 tx.update(ref, "driverName", null)
                 tx.update(ref, "driverRating", 5.0)
                 return@runTransaction
@@ -808,6 +809,7 @@ class FirebaseDataSource(
             
             tx.update(ref, "status", RequestStatus.OPEN.name)
             tx.update(ref, "driverId", null)
+            tx.update(ref, "hashedDriverId", "")
             tx.update(ref, "driverName", null)
             tx.update(ref, "driverRating", 5.0)
             tx.update(ref, "deniedDrivers", currentDeniedDrivers)

@@ -33,6 +33,13 @@ service cloud.firestore {
         resource.data.driverId == request.auth.uid ||
         resource.data.passengerId == request.auth.uid
       );
+      // Request cancellation/release removes the synthetic booking that was
+      // created when a driver accepted a passenger request. Either involved
+      // party may trigger that cleanup, but unrelated users may not delete it.
+      allow delete: if request.auth != null && (
+        resource.data.driverId == request.auth.uid ||
+        resource.data.passengerId == request.auth.uid
+      );
     }
 
     match /reviews/{reviewId} {
