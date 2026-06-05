@@ -185,25 +185,7 @@ class MyActiveRidesFragment : Fragment() {
                                     Toast.makeText(requireContext(), "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                 }
                             }
-                            // Consolidated pickup for all bookings in a journey
-                            item is RideJourney && newStatus is BookingStatus && newStatus == BookingStatus.PICKED_UP -> {
-                                var count = 0
-                                item.bookings.forEach { b ->
-                                    when (b.status) {
-                                        BookingStatus.ACCEPTED -> {
-                                            rideRepo.updateBookingStatus(b.id, BookingStatus.EN_ROUTE)
-                                            rideRepo.updateBookingStatus(b.id, BookingStatus.PICKED_UP)
-                                            count++
-                                        }
-                                        BookingStatus.EN_ROUTE -> {
-                                            rideRepo.updateBookingStatus(b.id, BookingStatus.PICKED_UP)
-                                            count++
-                                        }
-                                        else -> Unit
-                                    }
-                                }
-                                Toast.makeText(requireContext(), "Confirmed pickup for $count passengers", Toast.LENGTH_SHORT).show()
-                            }
+                            /* Removed driver-side pickup confirmation - client must confirm now */
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("MyActiveRides", "Status update failed", e)
@@ -504,7 +486,7 @@ class ActiveRideAdapter(
 
         val (statusText, btnText, nextStatus) = when {
             item is RideRequest && item.status == RequestStatus.ACCEPTED -> Triple("Accepted - Get moving!", "Start Trip", RequestStatus.EN_ROUTE)
-            item is RideRequest && item.status == RequestStatus.EN_ROUTE -> Triple("En route to pickup", "Confirm Pickup", RequestStatus.PICKED_UP)
+            item is RideRequest && item.status == RequestStatus.EN_ROUTE -> Triple("En route to pickup", "Waiting for passenger confirmation", RequestStatus.EN_ROUTE)
             item is RideRequest && item.status == RequestStatus.PICKED_UP -> Triple("Passenger onboard", "Finish Ride", RequestStatus.COMPLETED)
             item is RideRequest && item.status == RequestStatus.COMPLETED -> Triple("Ride Completed", "", RequestStatus.COMPLETED)
 
@@ -513,12 +495,12 @@ class ActiveRideAdapter(
                 val readyToFinish = item.bookings.isEmpty() ||
                     item.bookings.all { it.status == BookingStatus.PICKED_UP || it.status == BookingStatus.COMPLETED }
                 if (readyToFinish) Triple("Journey ready to finish", "Finish Journey", RideStatus.COMPLETED)
-                else Triple("Journey in progress", "Confirm All Pickups", BookingStatus.PICKED_UP)
+                else Triple("Journey in progress", "Waiting for passengers to confirm pickup", RideStatus.EN_ROUTE)
             }
             item is RideJourney && item.ride.status == RideStatus.COMPLETED -> Triple("Journey Completed", "", RideStatus.COMPLETED)
 
             item is Booking && item.status == BookingStatus.ACCEPTED -> Triple("Booking Accepted", "Start Trip", BookingStatus.EN_ROUTE)
-            item is Booking && item.status == BookingStatus.EN_ROUTE -> Triple("En route to pickup", "Confirm Pickup", BookingStatus.PICKED_UP)
+            item is Booking && item.status == BookingStatus.EN_ROUTE -> Triple("En route to pickup", "Waiting for passenger confirmation", BookingStatus.EN_ROUTE)
             item is Booking && item.status == BookingStatus.PICKED_UP -> Triple("Passenger onboard", "Finish Ride", BookingStatus.COMPLETED)
             item is Booking && item.status == BookingStatus.COMPLETED -> Triple("Ride Completed", "", BookingStatus.COMPLETED)
 
@@ -572,7 +554,7 @@ class ActiveRideAdapter(
             holder.tvDriver.setTextColor(androidx.core.content.ContextCompat.getColor(holder.itemView.context, R.color.text_secondary))
         }
 
-        holder.btnAction.visibility = if (btnText.isNotEmpty()) View.VISIBLE else View.GONE
+        holder.btnAction.visibility = if (btnText.isNotEmpty() && btnText != "Waiting for passenger confirmation" && btnText != "Waiting for passengers to confirm pickup") View.VISIBLE else View.GONE
         holder.btnAction.text = btnText
         holder.btnAction.setOnClickListener {
             onUpdateStatus(item, nextStatus)

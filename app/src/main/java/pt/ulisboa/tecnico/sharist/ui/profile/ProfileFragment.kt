@@ -102,6 +102,7 @@ class ProfileFragment : Fragment() {
         val tvHistogram = view.findViewById<TextView>(R.id.tv_histogram)
         val tvVehicles = view.findViewById<TextView>(R.id.tv_vehicles)
         val tvComments = view.findViewById<TextView>(R.id.tv_comments)
+        val vehicleSection = view.findViewById<View>(R.id.vehicle_section)
         val btnProfilePhoto = view.findViewById<Button>(R.id.btn_pick_profile_photo)
         val btnCarPhoto = view.findViewById<Button>(R.id.btn_pick_car_photo)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
@@ -118,7 +119,7 @@ class ProfileFragment : Fragment() {
         isOwnProfile = explicitTargetUid == null || targetUid == currentUid
 
         btnProfilePhoto.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
-        btnCarPhoto.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
+        btnCarPhoto.visibility = View.GONE
         btnProfilePhoto.setOnClickListener {
             pendingPhotoTarget = PhotoTarget.PROFILE
             pickImage.launch(arrayOf("image/*"))
@@ -135,14 +136,14 @@ class ProfileFragment : Fragment() {
                 User(uid = DemoRequestStore.DEMO_CLIENT_ID, displayName = DemoRequestStore.DEMO_CLIENT_NAME, email = "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
             }
             val demoUser = DemoRideStore.getUser(defaultDemoUser.uid) ?: defaultDemoUser
-            bindProfile(demoUser, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
+            bindProfile(demoUser, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles, vehicleSection, btnCarPhoto)
             bindImages(view, demoUser)
             observeReviews(demoUser.uid, tvComments, tvRatingSummary, tvHistogram)
         } else if (targetUid != null) {
             viewLifecycleOwner.lifecycleScope.launch {
                 val user = userRepo.getUser(targetUid)
                 if (user != null) {
-                    bindProfile(user, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
+                    bindProfile(user, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles, vehicleSection, btnCarPhoto)
                     bindImages(view, user)
                     observeReviews(user.uid, tvComments, tvRatingSummary, tvHistogram)
                 } else {
@@ -172,7 +173,9 @@ class ProfileFragment : Fragment() {
         tvBalance: TextView,
         tvRatingSummary: TextView,
         tvHistogram: TextView,
-        tvVehicles: TextView
+        tvVehicles: TextView,
+        vehicleSection: View,
+        btnCarPhoto: Button
     ) {
         currentProfile = user
         tvName.text = user.displayName
@@ -185,12 +188,16 @@ class ProfileFragment : Fragment() {
         }
         tvRatingSummary.text = "Loading rating..."
         tvHistogram.text = ""
-        tvVehicles.text = if (user.driver) {
+        vehicleSection.visibility = if (user.driver) View.VISIBLE else View.GONE
+        btnCarPhoto.visibility = if (isOwnProfile && user.driver) View.VISIBLE else View.GONE
+        if (user.driver) {
             val typeText = user.vehicleType.displayName
             val seatsText = user.vehicleType.maxSeats
             val plateText = if (user.vehiclePlate.isBlank()) "N/A" else user.vehiclePlate
-            "• $typeText ($seatsText seats)\n• Plate: $plateText"
-        } else "No registered vehicles"
+            tvVehicles.text = "• $typeText ($seatsText seats)\n• Plate: $plateText"
+        } else {
+            tvVehicles.text = ""
+        }
     }
 
     private fun bindImages(view: View, user: User) {
@@ -205,16 +212,20 @@ class ProfileFragment : Fragment() {
         ) {
             it.contentDescription = "Profile photo"
         }
-        ImageLoader.load(
-            carPhoto,
-            user.carPhotoUrl,
-            R.drawable.ic_car_placeholder,
-            app.networkMonitor,
-            respectMetered = false
-        ) {
-            it.contentDescription = "Vehicle photo"
+        if (user.driver) {
+            ImageLoader.load(
+                carPhoto,
+                user.carPhotoUrl,
+                R.drawable.ic_car_placeholder,
+                app.networkMonitor,
+                respectMetered = false
+            ) {
+                it.contentDescription = "Vehicle photo"
+            }
+            carPhoto.visibility = View.VISIBLE
+        } else {
+            carPhoto.visibility = View.GONE
         }
-        carPhoto.visibility = if (user.driver || !user.carPhotoUrl.isNullOrBlank()) View.VISIBLE else View.GONE
     }
 
     private fun observeReviews(uid: String, tvComments: TextView, tvRatingSummary: TextView, tvHistogram: TextView) {

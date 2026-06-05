@@ -383,7 +383,7 @@ class RideDetailActivity : AppCompatActivity() {
                     val isOpenOrFull = ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL
                     val currentUid = (application as SharISTApp).userRepository.currentUid
                     val myActiveBooking = joined.firstOrNull { it.passengerId == currentUid }
-                    val needsPickupConfirmation = !isOwner && isEnRoute && myActiveBooking?.status == BookingStatus.EN_ROUTE
+                    val needsPickupConfirmation = !isOwner && (isEnRoute || ride.status == RideStatus.COMPLETED) && myActiveBooking?.status == BookingStatus.EN_ROUTE
                     val allPassengersPickedUp = joined.none { it.status == BookingStatus.ACCEPTED || it.status == BookingStatus.EN_ROUTE }
 
                     // 2. Weather Warning UI

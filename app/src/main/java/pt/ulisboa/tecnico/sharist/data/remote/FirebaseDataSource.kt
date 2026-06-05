@@ -695,6 +695,11 @@ class FirebaseDataSource(
             val current = req.status
             val uid = currentUid
 
+            // Validation: Only passenger can confirm pickup
+            if (status == RequestStatus.PICKED_UP && (uid != req.passengerId || current != RequestStatus.EN_ROUTE)) {
+                return@runTransaction
+            }
+
             var driverToPay: Pair<DocumentReference, Double>? = null
             var passengerToRefund: Pair<DocumentReference, Double>? = null
             var passengerPenalty: Pair<DocumentReference, Double>? = null
@@ -747,7 +752,8 @@ class FirebaseDataSource(
 
             // Allow idempotent transitions for auto-refund
             val valid = when (status) {
-                RequestStatus.COMPLETED -> current != RequestStatus.CANCELLED
+                RequestStatus.PICKED_UP -> current == RequestStatus.EN_ROUTE && uid == req.passengerId
+                RequestStatus.COMPLETED -> current == RequestStatus.PICKED_UP && uid == req.driverId
                 RequestStatus.CANCELLED -> current != RequestStatus.COMPLETED
                 else -> true
             }

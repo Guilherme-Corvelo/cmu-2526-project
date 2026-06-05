@@ -45,8 +45,8 @@ class MyRequestsFragment : Fragment() {
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
 
-        val adapter = MyRequestAdapter(
-            onCancel = { item ->
+        val adapter = MyRequestAdapter(object : MyRequestAdapter.OnItemActionListener {
+            override fun onCancel(item: Any) {
                 viewLifecycleOwner.lifecycleScope.launch {
                     if (item is RideRequest) {
                         requestRepo.cancelRequest(item.id)
@@ -59,8 +59,9 @@ class MyRequestsFragment : Fragment() {
                         }
                     }
                 }
-            },
-            onRejectDriver = { item ->
+            }
+
+            override fun onRejectDriver(item: Any) {
                 viewLifecycleOwner.lifecycleScope.launch {
                     val (requestId, driverId) = when (item) {
                         is RideRequest -> item.id to item.driverId
@@ -77,8 +78,9 @@ class MyRequestsFragment : Fragment() {
                         Toast.makeText(requireContext(), "Driver rejected. Searching again...", Toast.LENGTH_SHORT).show()
                     }
                 }
-            },
-            onRate = { item ->
+            }
+
+            override fun onRate(item: Any) {
                 val (name, targetId, id) = if (item is RideRequest) {
                     Triple(item.driverName ?: "Driver", item.driverId ?: "", item.id)
                 } else {
@@ -109,7 +111,26 @@ class MyRequestsFragment : Fragment() {
                 }
                 dialog.show(childFragmentManager, "rate_driver")
             }
-        )
+
+            override fun onConfirmPickup(item: Any) {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        when (item) {
+                            is RideRequest -> {
+                                requestRepo.updateRequestStatus(item.id, RequestStatus.PICKED_UP)
+                                Toast.makeText(requireContext(), "Pickup confirmed!", Toast.LENGTH_SHORT).show()
+                            }
+                            is pt.ulisboa.tecnico.sharist.data.model.Booking -> {
+                                rideRepo.updateBookingStatus(item.id, BookingStatus.PICKED_UP)
+                                Toast.makeText(requireContext(), "Pickup confirmed!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(requireContext(), "Failed to confirm pickup: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        })
         recycler.layoutManager = LinearLayoutManager(requireContext())
         recycler.adapter = adapter
 
@@ -145,11 +166,17 @@ class MyRequestsFragment : Fragment() {
 }
 
 class MyRequestAdapter(
-    private val onCancel: (Any) -> Unit = {},
-    private val onRejectDriver: (Any) -> Unit = {},
-    private val onRate: (Any) -> Unit = {}
+    private val listener: OnItemActionListener
 ) : ListAdapter<Any, MyRequestAdapter.VH>(DIFF) {
     private val dateFmt = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
+    
+    interface OnItemActionListener {
+        fun onCancel(item: Any)
+        fun onRejectDriver(item: Any)
+        fun onRate(item: Any)
+        fun onConfirmPickup(item: Any)
+    }
+
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
         val tvPendingBadge: TextView = v.findViewById(R.id.tv_pending_badge)
@@ -177,15 +204,21 @@ class MyRequestAdapter(
             h.tvDriver.text = item.driverName?.let { "Driver: $it" } ?: "Searching for driver..."
             h.tvStatus.text = "Request: ${item.status}"
             
-            h.btnAction.visibility = if (item.status == RequestStatus.ACCEPTED) View.VISIBLE else View.GONE
-            h.btnAction.text = "Reject Driver"
-            h.btnAction.setOnClickListener { onRejectDriver(item) }
+            if (item.status == RequestStatus.EN_ROUTE) {
+                h.btnAction.visibility = View.VISIBLE
+                h.btnAction.text = "Confirm Pickup"
+                h.btnAction.setOnClickListener { listener.onConfirmPickup(item) }
+            } else {
+                h.btnAction.visibility = if (item.status == RequestStatus.ACCEPTED) View.VISIBLE else View.GONE
+                h.btnAction.text = "Reject Driver"
+                h.btnAction.setOnClickListener { listener.onRejectDriver(item) }
+            }
 
             h.btnCancel.visibility = if (item.status == RequestStatus.OPEN || item.status == RequestStatus.ACCEPTED) View.VISIBLE else View.GONE
-            h.btnCancel.setOnClickListener { onCancel(item) }
+            h.btnCancel.setOnClickListener { listener.onCancel(item) }
             
             h.btnRate.visibility = if (item.status == RequestStatus.COMPLETED && !item.driverReviewed) View.VISIBLE else View.GONE
-            h.btnRate.setOnClickListener { onRate(item) }
+            h.btnRate.setOnClickListener { listener.onRate(item) }
         } else if (item is pt.ulisboa.tecnico.sharist.data.model.Booking) {
             h.tvRoute.text = "${item.origin} → ${item.destination}"
             h.tvPendingBadge.visibility = if (item.isPending) View.VISIBLE else View.GONE
@@ -197,13 +230,19 @@ class MyRequestAdapter(
             h.tvDriver.text = "Driver: ${item.driverName}"
             h.tvStatus.text = "Booking: ${item.status}"
             
-            h.btnAction.visibility = View.GONE
+            if (item.status == BookingStatus.EN_ROUTE) {
+                h.btnAction.visibility = View.VISIBLE
+                h.btnAction.text = "Confirm Pickup"
+                h.btnAction.setOnClickListener { listener.onConfirmPickup(item) }
+            } else {
+                h.btnAction.visibility = View.GONE
+            }
 
             h.btnCancel.visibility = if (item.status == BookingStatus.PENDING || item.status == BookingStatus.ACCEPTED) View.VISIBLE else View.GONE
-            h.btnCancel.setOnClickListener { onCancel(item) }
+            h.btnCancel.setOnClickListener { listener.onCancel(item) }
 
             h.btnRate.visibility = if (item.status == BookingStatus.COMPLETED && !item.driverReviewed) View.VISIBLE else View.GONE
-            h.btnRate.setOnClickListener { onRate(item) }
+            h.btnRate.setOnClickListener { listener.onRate(item) }
         }
     }
     companion object { 
