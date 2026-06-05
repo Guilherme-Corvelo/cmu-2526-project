@@ -21,6 +21,7 @@ import pt.ulisboa.tecnico.sharist.data.local.SharISTDatabase
 import pt.ulisboa.tecnico.sharist.data.model.*
 import pt.ulisboa.tecnico.sharist.data.remote.FirebaseDataSource
 import pt.ulisboa.tecnico.sharist.data.remote.MockRemoteDataSource
+import pt.ulisboa.tecnico.sharist.data.remote.PhotoUploadTarget
 import pt.ulisboa.tecnico.sharist.data.remote.RemoteDataSource
 import pt.ulisboa.tecnico.sharist.data.repository.RideRepository
 import pt.ulisboa.tecnico.sharist.data.repository.RideRequestRepository
@@ -93,6 +94,8 @@ class SharISTApp : Application() {
             }
             override suspend fun createUserProfile(user: User) = delegate.createUserProfile(user)
             override suspend fun updateUserProfile(user: User) = delegate.updateUserProfile(user)
+            override suspend fun uploadUserPhoto(uid: String, imageUri: android.net.Uri, target: PhotoUploadTarget) =
+                delegate.uploadUserPhoto(uid, imageUri, target)
             override suspend fun getUser(uid: String) = delegate.getUser(uid)
             override suspend fun updateBalance(uid: String, delta: Double) = delegate.updateBalance(uid, delta)
             override suspend fun submitReview(review: Review) = delegate.submitReview(review)

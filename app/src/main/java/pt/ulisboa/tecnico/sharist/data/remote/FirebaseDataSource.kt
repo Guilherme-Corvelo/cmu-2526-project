@@ -7,6 +7,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -16,13 +17,15 @@ import pt.ulisboa.tecnico.sharist.data.model.*
 
 class FirebaseDataSource(
     val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val storage: FirebaseStorage = FirebaseStorage.getInstance()
 ) : RemoteDataSource {
     private val requestsCol = db.collection("ride_requests")
     private val usersCol = db.collection("users")
     private val reviewsCol = db.collection("reviews")
     private val ridesCol = db.collection("rides")
     private val bookingsCol = db.collection("bookings")
+    private val userPhotosRef = storage.reference.child("user_photos")
 
     private val activeListeners = mutableListOf<ListenerRegistration>()
 
@@ -44,6 +47,17 @@ class FirebaseDataSource(
     override suspend fun updateUserProfile(user: User) {
         val hashedUid = user.hashedUid.ifBlank { pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(user.uid) }
         usersCol.document(user.uid).set(user.copy(hashedUid = hashedUid), SetOptions.merge()).await()
+    }
+
+    override suspend fun uploadUserPhoto(uid: String, imageUri: android.net.Uri, target: PhotoUploadTarget): String {
+        val safeUid = uid.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        val targetName = when (target) {
+            PhotoUploadTarget.PROFILE -> "profile"
+            PhotoUploadTarget.CAR -> "car"
+        }
+        val photoRef = userPhotosRef.child(safeUid).child("${targetName}_${System.currentTimeMillis()}")
+        photoRef.putFile(imageUri).await()
+        return photoRef.downloadUrl.await().toString()
     }
 
     override suspend fun getUser(uid: String): User? = usersCol.document(uid).get().await().toObject(User::class.java)
