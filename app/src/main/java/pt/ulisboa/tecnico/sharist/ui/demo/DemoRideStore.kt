@@ -115,7 +115,7 @@ object DemoRideStore {
                         driverName = null,
                         driverRating = 5.0,
                         passengerPaid = request.passengerPaid,
-                        passengerRefunded = false,
+                        passengerRefunded = request.passengerRefunded,
                         driverPaid = false,
                         driverReviewed = false,
                         passengerReviewed = false,

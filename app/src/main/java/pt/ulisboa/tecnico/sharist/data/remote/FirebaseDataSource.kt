@@ -990,8 +990,12 @@ class FirebaseDataSource(
             hashedDriverId = "",
             driverName = null,
             driverRating = 5.0,
+            // The periodic request was already prepaid by the passenger.
+            // Keeping that prepaid state prevents a driver from trying to
+            // debit another user's balance when accepting the generated
+            // occurrence, which Firestore rules correctly reject.
             passengerPaid = req.passengerPaid,
-            passengerRefunded = false,
+            passengerRefunded = req.passengerRefunded,
             driverPaid = false,
             driverReviewed = false,
             passengerReviewed = false,
