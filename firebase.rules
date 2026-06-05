@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Profile and vehicle photos uploaded by FirebaseDataSource.uploadUserPhoto.
+    // Keep this block in the existing Firebase Storage rules file so it is
+    // deployed with the rest of the project's Storage access policy.
+    match /user_photos/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

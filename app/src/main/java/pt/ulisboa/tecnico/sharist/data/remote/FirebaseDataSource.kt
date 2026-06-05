@@ -8,6 +8,7 @@ import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.ktx.storageMetadata
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -56,15 +57,28 @@ class FirebaseDataSource(
             PhotoUploadTarget.PROFILE -> "profile"
             PhotoUploadTarget.CAR -> "car"
         }
+        val downloadToken = UUID.randomUUID().toString()
         val photoRef = userPhotosRef.child(safeUid).child("${targetName}_${UUID.randomUUID()}.jpg")
-        val uploadSnapshot = photoRef.putFile(imageUri).await()
+        val metadata = storageMetadata {
+            contentType = "image/jpeg"
+            setCustomMetadata("firebaseStorageDownloadTokens", downloadToken)
+        }
+        val uploadSnapshot = photoRef.putFile(imageUri, metadata).await()
         val uploadedRef = uploadSnapshot.storage
 
-        repeat(3) { attempt ->
+        repeat(5) { attempt ->
             runCatching { return uploadedRef.downloadUrl.await().toString() }
-            delay(250L * (attempt + 1))
+            delay(500L * (attempt + 1))
         }
-        return uploadedRef.downloadUrl.await().toString()
+
+        // Some Firebase Storage buckets can briefly report that the freshly
+        // uploaded object does not exist when asking the SDK for downloadUrl.
+        // Because the object was already uploaded with an explicit download
+        // token, construct the equivalent media URL so the profile update can
+        // still be saved instead of surfacing a false upload failure.
+        val encodedPath = android.net.Uri.encode(uploadedRef.path)
+        val encodedToken = android.net.Uri.encode(downloadToken)
+        return "https://firebasestorage.googleapis.com/v0/b/${uploadedRef.bucket}/o/$encodedPath?alt=media&token=$encodedToken"
     }
 
     override suspend fun getUser(uid: String): User? = usersCol.document(uid).get().await().toObject(User::class.java)
