@@ -11,6 +11,7 @@ import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import java.util.*
 import pt.ulisboa.tecnico.sharist.data.model.*
@@ -55,9 +56,15 @@ class FirebaseDataSource(
             PhotoUploadTarget.PROFILE -> "profile"
             PhotoUploadTarget.CAR -> "car"
         }
-        val photoRef = userPhotosRef.child(safeUid).child("${targetName}_${System.currentTimeMillis()}")
-        photoRef.putFile(imageUri).await()
-        return photoRef.downloadUrl.await().toString()
+        val photoRef = userPhotosRef.child(safeUid).child("${targetName}_${UUID.randomUUID()}.jpg")
+        val uploadSnapshot = photoRef.putFile(imageUri).await()
+        val uploadedRef = uploadSnapshot.storage
+
+        repeat(3) { attempt ->
+            runCatching { return uploadedRef.downloadUrl.await().toString() }
+            delay(250L * (attempt + 1))
+        }
+        return uploadedRef.downloadUrl.await().toString()
     }
 
     override suspend fun getUser(uid: String): User? = usersCol.document(uid).get().await().toObject(User::class.java)
@@ -254,10 +261,15 @@ class FirebaseDataSource(
             val nextRideRef = if (ride.periodic) ridesCol.document() else null
             val nextDate = if (ride.periodic) calculateNextOccurrence(ride.departureTime, ride.periodicLabel) else null
 
+            val unconfirmedPickup = bookingStates.any { (_, booking) ->
+                booking.status == BookingStatus.ACCEPTED || booking.status == BookingStatus.EN_ROUTE
+            }
+            if (unconfirmedPickup) {
+                throw IllegalStateException("All passengers must confirm pickup before the ride can be finished.")
+            }
+
             for ((bRef, booking) in bookingStates) {
-                val isActive = booking.status == BookingStatus.ACCEPTED || 
-                               booking.status == BookingStatus.PICKED_UP || 
-                               booking.status == BookingStatus.EN_ROUTE
+                val isActive = booking.status == BookingStatus.PICKED_UP
                 
                 if (isActive) {
                     tx.update(bRef, "status", BookingStatus.COMPLETED.name)
@@ -442,12 +454,13 @@ class FirebaseDataSource(
                 ?: error("Booking not found")
 
             val current = booking.status
+            val uid = currentUid
             val valid = when (status) {
-                BookingStatus.ACCEPTED -> current == BookingStatus.PENDING
-                BookingStatus.REJECTED -> current == BookingStatus.PENDING || current == BookingStatus.REJECTED
-                BookingStatus.EN_ROUTE -> current == BookingStatus.ACCEPTED
-                BookingStatus.PICKED_UP -> current == BookingStatus.EN_ROUTE
-                BookingStatus.COMPLETED -> current == BookingStatus.PICKED_UP || current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.COMPLETED
+                BookingStatus.ACCEPTED -> current == BookingStatus.PENDING && uid == booking.driverId
+                BookingStatus.REJECTED -> (current == BookingStatus.PENDING || current == BookingStatus.REJECTED) && uid == booking.driverId
+                BookingStatus.EN_ROUTE -> current == BookingStatus.ACCEPTED && uid == booking.driverId
+                BookingStatus.PICKED_UP -> current == BookingStatus.EN_ROUTE && uid == booking.passengerId
+                BookingStatus.COMPLETED -> (current == BookingStatus.PICKED_UP || current == BookingStatus.COMPLETED) && uid == booking.driverId
                 BookingStatus.CANCELLED -> (current != BookingStatus.COMPLETED && current != BookingStatus.REJECTED)
                 else -> false
             }
@@ -465,7 +478,6 @@ class FirebaseDataSource(
             var passengerToRefund: Pair<DocumentReference, Double>? = null
             var passengerPenalty: Pair<DocumentReference, Double>? = null
             var rideToReturnSeats: Pair<DocumentReference, Long>? = null
-            val uid = currentUid
             val cancellingActiveBooking = status == BookingStatus.CANCELLED &&
                 (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)
 

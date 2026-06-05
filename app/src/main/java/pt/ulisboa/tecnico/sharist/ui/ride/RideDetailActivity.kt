@@ -54,6 +54,7 @@ class RideDetailViewModel(
         data class Error(val message: String)   : BookingState()
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun loadRide(rideId: String) {
         viewModelScope.launch {
             val currentUid = userRepo.currentUid
@@ -73,10 +74,19 @@ class RideDetailViewModel(
 
             if (currentUid != null) {
                 launch {
-                    rideRepo.getRideBookings(rideId)
-                        .catch { e ->
-                            android.util.Log.e("RideDetailViewModel", "Error fetching bookings", e)
-                            emit(emptyList())
+                    combine(_ride.filterNotNull(), _isRideOwner) { _, isOwner -> isOwner }
+                        .distinctUntilChanged()
+                        .flatMapLatest { isOwner ->
+                            val source = if (isOwner) {
+                                rideRepo.getRideBookings(rideId)
+                            } else {
+                                rideRepo.getPassengerBookings(currentUid)
+                                    .map { bookings -> bookings.filter { it.rideId == rideId } }
+                            }
+                            source.catch { e ->
+                                android.util.Log.e("RideDetailViewModel", "Error fetching bookings", e)
+                                emit(emptyList())
+                            }
                         }
                         .collect { bookings ->
                             _pendingBookings.value = bookings.filter { it.status == BookingStatus.PENDING }
@@ -197,6 +207,18 @@ class RideDetailViewModel(
                 _bookingState.value = BookingState.Success("started", false)
             }.onFailure {
                 _bookingState.value = BookingState.Error(it.message ?: "Start failed")
+            }
+        }
+    }
+
+
+    fun confirmPickup(bookingId: String) {
+        viewModelScope.launch {
+            _bookingState.value = BookingState.Loading
+            rideRepo.updateBookingStatus(bookingId, BookingStatus.PICKED_UP).onSuccess {
+                _bookingState.value = BookingState.Success("pickup_confirmed", false)
+            }.onFailure {
+                _bookingState.value = BookingState.Error(it.message ?: "Could not confirm pickup")
             }
         }
     }
@@ -359,6 +381,10 @@ class RideDetailActivity : AppCompatActivity() {
                     val isCompleted = ride.status == RideStatus.COMPLETED
                     val isEnRoute = ride.status == RideStatus.EN_ROUTE
                     val isOpenOrFull = ride.status == RideStatus.OPEN || ride.status == RideStatus.FULL
+                    val currentUid = (application as SharISTApp).userRepository.currentUid
+                    val myActiveBooking = joined.firstOrNull { it.passengerId == currentUid }
+                    val needsPickupConfirmation = !isOwner && isEnRoute && myActiveBooking?.status == BookingStatus.EN_ROUTE
+                    val allPassengersPickedUp = joined.none { it.status == BookingStatus.ACCEPTED || it.status == BookingStatus.EN_ROUTE }
 
                     // 2. Weather Warning UI
                     val showWarning = warning == WeatherWarning.WILL_CANCEL || (!isOwner && passengerWarning == WeatherWarning.WILL_CANCEL)
@@ -395,6 +421,7 @@ class RideDetailActivity : AppCompatActivity() {
                         btnCancelRide.visibility = if (isOpenOrFull) View.VISIBLE else View.GONE
                         btnStartRide.visibility = if (isOpenOrFull) View.VISIBLE else View.GONE
                         btnFinishRide.visibility = if (isEnRoute) View.VISIBLE else View.GONE
+                        btnFinishRide.text = if (isEnRoute && !allPassengersPickedUp) "Waiting for pickup confirmation" else "Finish Ride"
 
                         // Pending Requests Logic
                         if (pending.isEmpty()) {
@@ -425,11 +452,12 @@ class RideDetailActivity : AppCompatActivity() {
                             btnViewPassengerProfile.text = "View passenger profile"
                         }
                     } else {
-                        btnBook.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
+                        btnBook.visibility = if (needsPickupConfirmation) View.VISIBLE else if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
+                        btnBook.text = if (needsPickupConfirmation) "Confirm Pickup" else btnBook.text
                         btnCancelRide.visibility = View.GONE
                         btnStartRide.visibility = View.GONE
                         btnFinishRide.visibility = View.GONE
-                        cbRecurringBooking.visibility = if (ride.periodic && !isCancelled && !isCompleted) View.VISIBLE else View.GONE
+                        cbRecurringBooking.visibility = if (ride.periodic && !isCancelled && !isCompleted && !isEnRoute) View.VISIBLE else View.GONE
                         cvWeatherPrefs.visibility = if (isCancelled || isCompleted || isEnRoute) View.GONE else View.VISIBLE
                         tvRequests.visibility = View.GONE
                         layoutRequestActions.visibility = View.GONE
@@ -443,13 +471,21 @@ class RideDetailActivity : AppCompatActivity() {
                     } else {
                         if (isOwner) {
                             btnStartRide.isEnabled = isOpenOrFull
+                            btnFinishRide.isEnabled = !isEnRoute || allPassengersPickedUp
                         } else {
-                            btnBook.isEnabled = ride.seatsAvailable > 0 && isOpenOrFull
+                            btnBook.isEnabled = needsPickupConfirmation || (ride.seatsAvailable > 0 && isOpenOrFull)
                         }
                     }
 
                     btnBook.setOnClickListener {
-                        if (ride.seatsAvailable > 0) {
+                        if (needsPickupConfirmation && myActiveBooking != null) {
+                            AlertDialog.Builder(this@RideDetailActivity)
+                                .setTitle("Confirm Pickup")
+                                .setMessage("Confirm that your driver has picked you up. The driver can only finish the ride after pickup is confirmed.")
+                                .setPositiveButton("Confirm") { _, _ -> viewModel.confirmPickup(myActiveBooking.id) }
+                                .setNegativeButton("Not yet", null)
+                                .show()
+                        } else if (ride.seatsAvailable > 0) {
                             if (passengerWarning == WeatherWarning.WILL_CANCEL) {
                                 AlertDialog.Builder(this@RideDetailActivity)
                                     .setTitle("Weather Warning")
@@ -473,14 +509,21 @@ class RideDetailActivity : AppCompatActivity() {
 
                         when (state) {
                             is RideDetailViewModel.BookingState.Success -> {
-                                val msg = if (state.isPending)
-                                    "Booking queued – will be confirmed when you're back online"
-                                else
-                                    "Booking confirmed! ID: ${state.bookingId}"
+                                val msg = when {
+                                    state.bookingId == "pickup_confirmed" -> "Pickup confirmed. The driver can now finish the ride."
+                                    state.bookingId == "started" -> "Ride started. Passengers must confirm pickup before you can finish."
+                                    state.bookingId == "completed" -> "Ride completed."
+                                    state.isPending -> "Booking queued – will be confirmed when you're back online"
+                                    else -> "Booking confirmed! ID: ${state.bookingId}"
+                                }
                                 AlertDialog.Builder(this@RideDetailActivity)
                                     .setTitle("Done")
                                     .setMessage(msg)
-                                    .setPositiveButton("OK") { _, _ -> finish() }
+                                    .setPositiveButton("OK") { _, _ ->
+                                        if (state.bookingId != "pickup_confirmed" && state.bookingId != "started") {
+                                            finish()
+                                        }
+                                    }
                                     .show()
                             }
                             is RideDetailViewModel.BookingState.Error ->
