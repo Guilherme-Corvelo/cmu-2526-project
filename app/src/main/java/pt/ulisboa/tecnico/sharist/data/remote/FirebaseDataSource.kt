@@ -700,8 +700,9 @@ class FirebaseDataSource(
 
             // Reschedule logic for periodic requests cancelled by the passenger/system.
             // Completed passenger-created periodic requests publish their next
-            // occurrence after the driver reviews the passenger in submitReview(),
-            // so the old completed request stays available for post-ride review.
+            // occurrence after an involved user reviews the completed ride in
+            // submitReview(), so the old completed request stays available for
+            // post-ride review.
             if (req.periodic && reschedule && status == RequestStatus.CANCELLED) {
                 val nextRef = requestsCol.document()
                 val nextDate = calculateNextOccurrence(req.requestedTime, req.periodicLabel)
@@ -718,6 +719,7 @@ class FirebaseDataSource(
                     driverPaid = false,
                     driverReviewed = false,
                     passengerReviewed = false,
+                    previousRequestId = req.id,
                     deniedBy = emptyList(),
                     deniedDrivers = emptyList(),
                     createdAt = null
@@ -919,15 +921,21 @@ class FirebaseDataSource(
             }
 
             if (docToUpdate != null && fieldToUpdate != null) {
-                if (docToUpdate == reqRef && fieldToUpdate == "passengerReviewed") {
+                if (docToUpdate == reqRef) {
                     val req = reqSnap.toObject(RideRequest::class.java)
-                    if (req?.periodic == true && req.status == RequestStatus.COMPLETED && uid == req.driverId) {
+                    val isInvolvedUser = uid == req?.driverId || uid == req?.passengerId
+                    val alreadyReviewed = when (fieldToUpdate) {
+                        "passengerReviewed" -> req?.passengerReviewed == true
+                        "driverReviewed" -> req?.driverReviewed == true
+                        else -> false
+                    }
+                    if (req?.periodic == true && req.status == RequestStatus.COMPLETED && isInvolvedUser && !alreadyReviewed) {
                         periodicRequestToReschedule = req
-                        tx.update(docToUpdate, fieldToUpdate, true)
+                    }
+                    tx.update(docToUpdate, fieldToUpdate, true)
+                    if (req?.periodic == true && req.status == RequestStatus.COMPLETED) {
                         tx.update(docToUpdate, "origin", "anonymized")
                         tx.update(docToUpdate, "destination", "anonymized")
-                    } else {
-                        tx.update(docToUpdate, fieldToUpdate, true)
                     }
                 } else {
                     tx.update(docToUpdate, fieldToUpdate, true)
@@ -955,6 +963,13 @@ class FirebaseDataSource(
     }
 
     private suspend fun publishNextPeriodicRequest(req: RideRequest) {
+        val existingNext = requestsCol
+            .whereEqualTo("previousRequestId", req.id)
+            .limit(1)
+            .get()
+            .await()
+        if (!existingNext.isEmpty) return
+
         val nextRef = requestsCol.document()
         val nextReq = req.copy(
             id = nextRef.id,
