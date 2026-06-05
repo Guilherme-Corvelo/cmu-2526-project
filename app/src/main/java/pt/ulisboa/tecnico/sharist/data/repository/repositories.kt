@@ -152,8 +152,13 @@ class RideRepository(
     }
 
     suspend fun completeRide(rideId: String): Result<Unit> = runCatching {
+        val entity = local.rideDao.getById(rideId)
+        val ride = entity?.toDomain()
+        if (ride?.periodic == true && ride.departureTime?.after(Date()) == true) {
+            throw Exception("Cannot finish periodic ride before its scheduled departure time.")
+        }
         remote.completeRide(rideId)
-        local.rideDao.getById(rideId)?.let {
+        entity?.let {
             local.rideDao.upsertOne(it.copy(status = RideStatus.COMPLETED.name))
         }
     }
@@ -171,6 +176,9 @@ class RideRepository(
 
         val entity = local.rideDao.getById(rideId) ?: throw Exception("Ride not found")
         val ride = entity.toDomain()
+        if (ride.periodic && ride.departureTime?.after(Date()) == true) {
+            throw Exception("Cannot start periodic ride before its scheduled departure time.")
+        }
 
         // Final safety check before starting
         val warning = weatherService.checkWeatherViolation(
@@ -661,6 +669,14 @@ class RideRequestRepository(
     }
 
     suspend fun updateRequestStatus(requestId: String, status: RequestStatus): Result<Unit> {
+        val localRequest = local.requestDao.getById(requestId)?.toDomain()
+        val movingForward = status == RequestStatus.EN_ROUTE ||
+            status == RequestStatus.PICKED_UP ||
+            status == RequestStatus.COMPLETED
+        if (localRequest?.periodic == true && movingForward && localRequest.requestedTime?.after(Date()) == true) {
+            return Result.failure(IllegalStateException("Cannot start or finish periodic ride request before its scheduled departure time."))
+        }
+
         if (!network.isConnected) {
             local.requestDao.getById(requestId)?.let {
                 local.requestDao.upsertOne(it.copy(status = status.name, isPending = true))

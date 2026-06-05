@@ -214,6 +214,9 @@ object DemoRideStore {
         
         ridesFlow.value = ridesFlow.value.map { ride ->
             if (ride.id == rideId) {
+                if (ride.periodic && ride.departureTime?.after(now) == true) {
+                    throw IllegalStateException("This periodic ride cannot start or finish before its scheduled departure time.")
+                }
                 val updatedRide = ride.copy(
                     status = RideStatus.COMPLETED,
                     origin = "anonymized",
@@ -357,8 +360,14 @@ object DemoRideStore {
     }
 
     fun startRide(rideId: String) {
+        val now = Date()
         ridesFlow.value = ridesFlow.value.map { ride ->
-            if (ride.id == rideId) ride.copy(status = RideStatus.EN_ROUTE) else ride
+            if (ride.id == rideId) {
+                if (ride.periodic && ride.departureTime?.after(now) == true) {
+                    throw IllegalStateException("This periodic ride cannot start before its scheduled departure time.")
+                }
+                ride.copy(status = RideStatus.EN_ROUTE)
+            } else ride
         }.toMutableList()
 
         bookingsFlow.value = bookingsFlow.value.map { booking ->

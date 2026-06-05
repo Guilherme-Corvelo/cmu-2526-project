@@ -82,21 +82,49 @@ class MyActiveRidesFragment : Fragment() {
                     try {
                         when {
                             item is RideRequest && newStatus is RequestStatus -> {
-                                requestRepo.updateRequestStatus(item.id, newStatus)
-                                Toast.makeText(requireContext(), "Status updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                                val movingForward = newStatus == RequestStatus.EN_ROUTE ||
+                                    newStatus == RequestStatus.PICKED_UP ||
+                                    newStatus == RequestStatus.COMPLETED
+                                if (item.periodic && movingForward && item.requestedTime?.after(java.util.Date()) == true) {
+                                    val scheduled = java.text.DateFormat.getDateTimeInstance(
+                                        java.text.DateFormat.MEDIUM,
+                                        java.text.DateFormat.SHORT
+                                    ).format(item.requestedTime!!)
+                                    Toast.makeText(
+                                        requireContext(),
+                                        "This periodic ride request is scheduled for $scheduled. You cannot start or finish it before then.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    return@launch
+                                }
+                                val res = requestRepo.updateRequestStatus(item.id, newStatus)
+                                if (res.isSuccess) {
+                                    Toast.makeText(requireContext(), "Status updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(requireContext(), "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                }
                             }
                             item is Booking && newStatus is BookingStatus -> {
                                 rideRepo.updateBookingStatus(item.id, newStatus)
                                 Toast.makeText(requireContext(), "Booking updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
                             }
                             item is RideJourney && newStatus is RideStatus -> {
-                                if (newStatus == RideStatus.EN_ROUTE) {
+                                if (newStatus == RideStatus.EN_ROUTE || newStatus == RideStatus.COMPLETED) {
                                     val departure = item.ride.departureTime
                                     if (departure != null) {
                                         val now = System.currentTimeMillis()
-                                        val maxStartTime = departure.time - (5 * 60 * 1000) // 5 minutes before
-                                        if (now < maxStartTime) {
-                                            Toast.makeText(requireContext(), "Too early to start! You can start at most 5 minutes before departure.", Toast.LENGTH_LONG).show()
+                                        val earliestTime = if (item.ride.periodic) departure.time else departure.time - (5 * 60 * 1000)
+                                        if (now < earliestTime) {
+                                            val scheduled = java.text.DateFormat.getDateTimeInstance(
+                                                java.text.DateFormat.MEDIUM,
+                                                java.text.DateFormat.SHORT
+                                            ).format(departure)
+                                            val message = if (item.ride.periodic) {
+                                                "This periodic ride is scheduled for $scheduled. You cannot start or finish it before then."
+                                            } else {
+                                                "Too early to start! You can start at most 5 minutes before departure."
+                                            }
+                                            Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
                                             return@launch
                                         }
                                     }
@@ -297,6 +325,10 @@ class ActiveRideAdapter(
 ) : androidx.recyclerview.widget.ListAdapter<Any, ActiveRideAdapter.VH>(DIFF) {
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
+        val tvTime: TextView = v.findViewById(R.id.tv_time)
+        val tvPrice: TextView = v.findViewById(R.id.tv_price)
+        val tvStatus: TextView = v.findViewById(R.id.tv_status)
+        val tvPeriodicBadge: TextView = v.findViewById(R.id.tv_periodic_badge)
         val tvPendingBadge: TextView = v.findViewById(R.id.tv_pending_badge)
         val tvDriver: TextView = v.findViewById(R.id.tv_driver)
         val btnAction: android.widget.Button = v.findViewById(R.id.btn_action)
@@ -333,7 +365,24 @@ class ActiveRideAdapter(
             is RideJourney -> item.ride.status.name
             else -> ""
         }
-        val isRecurring = if (item is Booking) item.recurring else false
+        val isRecurring = when(item) {
+            is RideRequest -> item.periodic
+            is Booking -> item.recurring
+            is RideJourney -> item.ride.periodic
+            else -> false
+        }
+        val scheduledTime = when(item) {
+            is RideRequest -> item.requestedTime
+            is Booking -> item.departureTime
+            is RideJourney -> item.ride.departureTime
+            else -> null
+        }
+        val price = when(item) {
+            is RideRequest -> item.estimatedPrice
+            is Booking -> item.totalPrice
+            is RideJourney -> item.ride.pricePerSeat
+            else -> 0.0
+        }
         val isPending = when(item) {
             is RideRequest -> item.isPending
             is Booking -> item.isPending
@@ -383,6 +432,12 @@ class ActiveRideAdapter(
         }
         sb.append(": $origin → $destination")
         holder.tvRoute.text = sb
+        holder.tvPeriodicBadge.visibility = if (isRecurring) View.VISIBLE else View.GONE
+        holder.tvTime.text = scheduledTime?.let {
+            "Departure: ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(it)}"
+        } ?: "Departure: not scheduled"
+        holder.tvPrice.text = "Price: €%.2f".format(price)
+        holder.tvStatus.text = "Status: $status"
         
         holder.tvPendingBadge.clearAnimation()
         if (hasNewReqs) {

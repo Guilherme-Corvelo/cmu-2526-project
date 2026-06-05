@@ -187,6 +187,12 @@ class MockRemoteDataSource : RemoteDataSource {
     override suspend fun updateRequestStatus(requestId: String, status: RequestStatus, reschedule: Boolean) {
         DemoRequestStore.requests.value = DemoRequestStore.requests.value.map { req ->
             if (req.id == requestId) {
+                val movingForward = status == RequestStatus.EN_ROUTE ||
+                    status == RequestStatus.PICKED_UP ||
+                    status == RequestStatus.COMPLETED
+                if (req.periodic && movingForward && req.requestedTime?.after(java.util.Date()) == true) {
+                    throw IllegalStateException("This periodic ride request cannot start or finish before its scheduled departure time.")
+                }
                 if (status == RequestStatus.CANCELLED && currentUid == req.driverId && req.driverId != null) {
                     // Driver cancels acceptance -> Return to OPEN so other drivers can pick it up
                     req.copy(
