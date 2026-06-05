@@ -70,25 +70,33 @@
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Ratings Histogram (1-5)" android:textStyle="bold"/>
         <TextView android:id="@+id/tv_histogram" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Vehicles" android:textStyle="bold"/>
-        <ImageView
-            android:id="@+id/iv_car_photo"
-            android:layout_width="match_parent"
-            android:layout_height="140dp"
-            android:layout_marginTop="6dp"
-            android:layout_marginBottom="8dp"
-            android:contentDescription="Vehicle photo"
-            android:scaleType="centerCrop"
-            android:src="@drawable/ic_car_placeholder"/>
-
-        <Button
-            android:id="@+id/btn_pick_car_photo"
+        <LinearLayout
+            android:id="@+id/vehicle_section"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Choose vehicle photo"
-            android:visibility="gone"
-            style="@style/Widget.Material3.Button.OutlinedButton"/>
-        <TextView android:id="@+id/tv_vehicles" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Vehicles" android:textStyle="bold"/>
+            <ImageView
+                android:id="@+id/iv_car_photo"
+                android:layout_width="match_parent"
+                android:layout_height="140dp"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="8dp"
+                android:contentDescription="Vehicle photo"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_car_placeholder"/>
+
+            <Button
+                android:id="@+id/btn_pick_car_photo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Choose vehicle photo"
+                android:visibility="gone"
+                style="@style/Widget.Material3.Button.OutlinedButton"/>
+            <TextView android:id="@+id/tv_vehicles" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>
+        </LinearLayout>
 
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Recent comments" android:textStyle="bold"/>
         <TextView android:id="@+id/tv_comments" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="24dp"/>
