@@ -3,7 +3,6 @@ package pt.ulisboa.tecnico.sharist.ui.profile
 import android.content.Intent
 import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.os.Bundle
 import android.view.*
 import android.widget.Button
@@ -20,6 +19,7 @@ import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.Review
 import pt.ulisboa.tecnico.sharist.data.model.User
 import pt.ulisboa.tecnico.sharist.data.model.VehicleType
+import pt.ulisboa.tecnico.sharist.data.remote.PhotoUploadTarget
 import pt.ulisboa.tecnico.sharist.ui.auth.AuthActivity
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRideStore
@@ -46,10 +46,11 @@ class ProfileFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             runCatching {
                 persistImageUri(uri)
-                val stableUri = copyProfileImageToAppStorage(uri, pendingPhotoTarget)
+                showSelectedImagePreview(uri, pendingPhotoTarget)
+                val photoUrl = userRepo.uploadPhoto(user.uid, uri, pendingPhotoTarget.toUploadTarget())
                 val updated = when (pendingPhotoTarget) {
-                    PhotoTarget.PROFILE -> user.copy(photoUrl = stableUri.toString())
-                    PhotoTarget.CAR -> user.copy(carPhotoUrl = stableUri.toString())
+                    PhotoTarget.PROFILE -> user.copy(photoUrl = photoUrl)
+                    PhotoTarget.CAR -> user.copy(carPhotoUrl = photoUrl)
                 }
                 userRepo.updateProfile(updated)
                 updated
@@ -58,6 +59,7 @@ class ProfileFragment : Fragment() {
                 bindImages(requireView(), updated)
                 Toast.makeText(requireContext(), "Photo saved", Toast.LENGTH_SHORT).show()
             }.onFailure { e ->
+                currentProfile?.let { bindImages(requireView(), it) }
                 Toast.makeText(requireContext(), "Could not save photo: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
@@ -72,41 +74,17 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    private fun copyProfileImageToAppStorage(uri: Uri, target: PhotoTarget): Uri {
-        val userId = currentProfile?.uid?.ifBlank { "current" } ?: "current"
-        val safeUserId = userId.replace(Regex("[^A-Za-z0-9_.-]"), "_")
-        val extension = extensionForUri(uri)
-        val fileName = when (target) {
-            PhotoTarget.PROFILE -> "${safeUserId}_profile$extension"
-            PhotoTarget.CAR -> "${safeUserId}_car$extension"
+    private fun showSelectedImagePreview(uri: Uri, target: PhotoTarget) {
+        val imageViewId = when (target) {
+            PhotoTarget.PROFILE -> R.id.iv_profile_photo
+            PhotoTarget.CAR -> R.id.iv_car_photo
         }
-        val imageDir = java.io.File(requireContext().filesDir, "profile_images").apply { mkdirs() }
-        val dest = java.io.File(imageDir, fileName)
-        requireContext().contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input) { "Could not open selected image" }
-            dest.outputStream().use { output -> input.copyTo(output) }
-        }
-        return Uri.fromFile(dest)
+        view?.findViewById<ImageView>(imageViewId)?.setImageURI(uri)
     }
 
-    private fun extensionForUri(uri: Uri): String {
-        val fromName = runCatching {
-            requireContext().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
-        }.getOrNull()
-        val dotExtension = fromName
-            ?.substringAfterLast('.', missingDelimiterValue = "")
-            ?.takeIf { it.length in 1..5 && it.all { ch -> ch.isLetterOrDigit() } }
-            ?.let { ".$it" }
-        if (dotExtension != null) return dotExtension
-
-        return when (requireContext().contentResolver.getType(uri)) {
-            "image/png" -> ".png"
-            "image/webp" -> ".webp"
-            "image/gif" -> ".gif"
-            else -> ".jpg"
-        }
+    private fun PhotoTarget.toUploadTarget(): PhotoUploadTarget = when (this) {
+        PhotoTarget.PROFILE -> PhotoUploadTarget.PROFILE
+        PhotoTarget.CAR -> PhotoUploadTarget.CAR
     }
 
     override fun onCreateView(
@@ -218,11 +196,23 @@ class ProfileFragment : Fragment() {
     private fun bindImages(view: View, user: User) {
         val profilePhoto = view.findViewById<ImageView>(R.id.iv_profile_photo)
         val carPhoto = view.findViewById<ImageView>(R.id.iv_car_photo)
-        ImageLoader.load(profilePhoto, user.photoUrl, R.drawable.ic_person_placeholder, app.networkMonitor) {
-            it.contentDescription = "Profile photo placeholder. Tap to download on metered data."
+        ImageLoader.load(
+            profilePhoto,
+            user.photoUrl,
+            R.drawable.ic_person_placeholder,
+            app.networkMonitor,
+            respectMetered = false
+        ) {
+            it.contentDescription = "Profile photo"
         }
-        ImageLoader.load(carPhoto, user.carPhotoUrl, R.drawable.ic_car_placeholder, app.networkMonitor) {
-            it.contentDescription = "Vehicle photo placeholder. Tap to download on metered data."
+        ImageLoader.load(
+            carPhoto,
+            user.carPhotoUrl,
+            R.drawable.ic_car_placeholder,
+            app.networkMonitor,
+            respectMetered = false
+        ) {
+            it.contentDescription = "Vehicle photo"
         }
         carPhoto.visibility = if (user.driver || !user.carPhotoUrl.isNullOrBlank()) View.VISIBLE else View.GONE
     }

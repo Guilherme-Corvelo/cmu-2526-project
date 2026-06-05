@@ -28,6 +28,7 @@ object ImageLoader {
      * @param url        Remote image URL (may be null)
      * @param placeholder Drawable resource id for the placeholder
      * @param network    NetworkMonitor for connection-type decisions
+     * @param respectMetered Whether to defer remote image loading on metered connections
      * @param onMetered  Optional lambda called when on metered — attach tap listener here
      */
     fun load(
@@ -35,6 +36,7 @@ object ImageLoader {
         url: String?,
         placeholder: Int,
         network: NetworkMonitor,
+        respectMetered: Boolean = true,
         onMetered: ((ImageView) -> Unit)? = null
     ) {
         if (url.isNullOrBlank()) {
@@ -42,8 +44,8 @@ object ImageLoader {
             return
         }
 
-        when (network.connectionType) {
-            ConnectionType.WIFI -> {
+        when {
+            network.connectionType == ConnectionType.WIFI || !respectMetered -> {
                 // Free data: load immediately
                 Glide.with(imageView.context)
                     .load(url)
@@ -51,7 +53,7 @@ object ImageLoader {
                     .into(imageView)
             }
 
-            ConnectionType.METERED -> {
+            network.connectionType == ConnectionType.METERED -> {
                 // Metered: show placeholder + overlay hint, load on tap
                 imageView.setImageResource(placeholder)
                 onMetered?.invoke(imageView)
@@ -65,7 +67,7 @@ object ImageLoader {
                 }
             }
 
-            ConnectionType.NONE -> {
+            else -> {
                 // Offline: try disk cache, fallback to placeholder
                 Glide.with(imageView.context)
                     .load(url)

@@ -34,6 +34,9 @@ class MockRemoteDataSource : RemoteDataSource {
         DemoRideStore.createOrUpdateUser(user)
     }
 
+    override suspend fun uploadUserPhoto(uid: String, imageUri: android.net.Uri, target: PhotoUploadTarget): String =
+        imageUri.toString()
+
     override suspend fun getUser(uid: String): User? = DemoRideStore.getUser(uid)
 
     override suspend fun updateBalance(uid: String, delta: Double) {

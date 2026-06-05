@@ -1,7 +1,10 @@
 package pt.ulisboa.tecnico.sharist.data.remote
 
+import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import pt.ulisboa.tecnico.sharist.data.model.*
+
+enum class PhotoUploadTarget { PROFILE, CAR }
 
 interface RemoteDataSource {
     val currentUid: String?
@@ -10,6 +13,7 @@ interface RemoteDataSource {
     fun signOut()
     suspend fun createUserProfile(user: User)
     suspend fun updateUserProfile(user: User)
+    suspend fun uploadUserPhoto(uid: String, imageUri: Uri, target: PhotoUploadTarget): String
     suspend fun getUser(uid: String): User?
     suspend fun updateBalance(uid: String, delta: Double)
     suspend fun submitReview(review: Review): String?

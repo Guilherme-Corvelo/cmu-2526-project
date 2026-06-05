@@ -790,6 +790,8 @@ class UserRepository(private val remote: RemoteDataSource) {
     fun signOut() = remote.signOut()
     suspend fun createProfile(user: User) = remote.createUserProfile(user)
     suspend fun updateProfile(user: User) = remote.updateUserProfile(user)
+    suspend fun uploadPhoto(uid: String, imageUri: android.net.Uri, target: pt.ulisboa.tecnico.sharist.data.remote.PhotoUploadTarget) =
+        remote.uploadUserPhoto(uid, imageUri, target)
     suspend fun getUser(uid: String) = remote.getUser(uid)
     suspend fun updateBalance(uid: String, delta: Double) = remote.updateBalance(uid, delta)
 }
