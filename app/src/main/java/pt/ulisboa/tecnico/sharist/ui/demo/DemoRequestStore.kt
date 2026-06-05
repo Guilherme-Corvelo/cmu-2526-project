@@ -113,6 +113,9 @@ object DemoRequestStore {
         var completed = false
         requests.value = requests.value.map {
             if (it.id == requestId && it.driverId == DEMO_DRIVER_ID && it.status == RequestStatus.ACCEPTED) {
+                if (it.periodic && it.requestedTime?.after(Date()) == true) {
+                    throw IllegalStateException("This periodic ride request cannot finish before its scheduled departure time.")
+                }
                 completed = true
                 var updated = it.copy(
                     status = RequestStatus.COMPLETED,

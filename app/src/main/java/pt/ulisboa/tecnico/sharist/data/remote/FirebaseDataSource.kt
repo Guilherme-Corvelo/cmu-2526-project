@@ -206,6 +206,7 @@ class FirebaseDataSource(
                 ?: return@runTransaction
             
             if (ride.driverId != uid) return@runTransaction
+            ensurePeriodicRideDepartureReached(ride)
 
             val dRef = usersCol.document(uid)
             val currentBal = tx.get(dRef).getDouble("balance") ?: 0.0
@@ -316,7 +317,9 @@ class FirebaseDataSource(
             val rideRef = ridesCol.document(rideId)
             val rideSnap = tx.get(rideRef)
             
-            if (!rideSnap.exists() || rideSnap.getString("driverId") != uid) return@runTransaction
+            val ride = rideSnap.toObject(Ride::class.java) ?: return@runTransaction
+            if (!rideSnap.exists() || ride.driverId != uid) return@runTransaction
+            ensurePeriodicRideDepartureReached(ride)
             
             val bookingRefsToUpdate = mutableListOf<DocumentReference>()
             for (doc in bookingsSnapshot?.documents ?: emptyList()) {
@@ -340,6 +343,23 @@ class FirebaseDataSource(
             .whereEqualTo("driverId", driverId)
             .get()
             .await()
+
+    private fun ensurePeriodicRideDepartureReached(ride: Ride) {
+        val departure = ride.departureTime
+        if (ride.periodic && departure != null && Date().before(departure)) {
+            throw IllegalStateException("This periodic ride cannot start or finish before its scheduled departure time.")
+        }
+    }
+
+    private fun ensurePeriodicRequestDepartureReached(req: RideRequest, targetStatus: RequestStatus) {
+        val movingForward = targetStatus == RequestStatus.EN_ROUTE ||
+            targetStatus == RequestStatus.PICKED_UP ||
+            targetStatus == RequestStatus.COMPLETED
+        val requestedTime = req.requestedTime
+        if (req.periodic && movingForward && requestedTime != null && Date().before(requestedTime)) {
+            throw IllegalStateException("This periodic ride request cannot start or finish before its scheduled departure time.")
+        }
+    }
 
     private fun calculateNextOccurrence(currentDate: Date?, label: String): Date {
         val cal = Calendar.getInstance()
@@ -652,6 +672,8 @@ class FirebaseDataSource(
             var driverToPay: Pair<DocumentReference, Double>? = null
             var passengerToRefund: Pair<DocumentReference, Double>? = null
             var passengerPenalty: Pair<DocumentReference, Double>? = null
+
+            ensurePeriodicRequestDepartureReached(req, status)
 
             if (status == RequestStatus.COMPLETED) {
                 val driverId = req.driverId
