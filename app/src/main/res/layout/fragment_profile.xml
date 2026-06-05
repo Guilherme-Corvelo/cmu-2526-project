@@ -34,6 +34,24 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <ImageView
+            android:id="@+id/iv_profile_photo"
+            android:layout_width="96dp"
+            android:layout_height="96dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="8dp"
+            android:contentDescription="Profile photo"
+            android:scaleType="centerCrop"
+            android:src="@drawable/ic_person_placeholder"/>
+
+        <Button
+            android:id="@+id/btn_pick_profile_photo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Choose profile photo"
+            android:visibility="gone"
+            style="@style/Widget.Material3.Button.OutlinedButton"/>
+
         <TextView android:id="@+id/tv_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:textStyle="bold" android:textSize="20sp"/>
         <TextView android:id="@+id/tv_email" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>
 
@@ -45,6 +63,23 @@
         <TextView android:id="@+id/tv_histogram" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>
 
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Vehicles" android:textStyle="bold"/>
+        <ImageView
+            android:id="@+id/iv_car_photo"
+            android:layout_width="match_parent"
+            android:layout_height="140dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="8dp"
+            android:contentDescription="Vehicle photo"
+            android:scaleType="centerCrop"
+            android:src="@drawable/ic_car_placeholder"/>
+
+        <Button
+            android:id="@+id/btn_pick_car_photo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Choose vehicle photo"
+            android:visibility="gone"
+            style="@style/Widget.Material3.Button.OutlinedButton"/>
         <TextView android:id="@+id/tv_vehicles" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>
 
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Recent comments" android:textStyle="bold"/>

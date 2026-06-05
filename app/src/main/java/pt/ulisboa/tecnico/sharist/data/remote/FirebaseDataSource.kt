@@ -4,6 +4,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.DocumentReference
 import kotlinx.coroutines.channels.awaitClose
@@ -25,6 +26,11 @@ class FirebaseDataSource(
 
     private val activeListeners = mutableListOf<ListenerRegistration>()
 
+    private companion object {
+        const val LATE_CANCELLATION_TRUST_PENALTY = 0.10
+        const val DEFAULT_REQUEST_CANCELLATION_LIMIT_MINUTES = 60
+    }
+
     override val currentUid: String? get() = auth.currentUser?.uid
 
     override suspend fun signIn(email: String, pass: String): com.google.firebase.auth.AuthResult? = auth.signInWithEmailAndPassword(email, pass).await()
@@ -34,6 +40,12 @@ class FirebaseDataSource(
         val hashedUid = pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(user.uid)
         usersCol.document(user.uid).set(user.copy(hashedUid = hashedUid)).await() 
     }
+
+    override suspend fun updateUserProfile(user: User) {
+        val hashedUid = user.hashedUid.ifBlank { pt.ulisboa.tecnico.sharist.utils.SecurityUtils.hashIdentifier(user.uid) }
+        usersCol.document(user.uid).set(user.copy(hashedUid = hashedUid), SetOptions.merge()).await()
+    }
+
     override suspend fun getUser(uid: String): User? = usersCol.document(uid).get().await().toObject(User::class.java)
 
     override suspend fun updateBalance(uid: String, delta: Double) {
@@ -417,27 +429,49 @@ class FirebaseDataSource(
 
             var driverToPay: Pair<DocumentReference, Double>? = null
             var passengerToRefund: Pair<DocumentReference, Double>? = null
+            var passengerPenalty: Pair<DocumentReference, Double>? = null
+            var rideToReturnSeats: Pair<DocumentReference, Long>? = null
+            val uid = currentUid
+            val cancellingActiveBooking = status == BookingStatus.CANCELLED &&
+                (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)
+
             if (status == BookingStatus.COMPLETED) {
-                val uid = currentUid
                 if (uid == booking.driverId && !booking.driverPaid) {
                     val dRef = usersCol.document(booking.driverId)
                     val dBal = tx.get(dRef).getDouble("balance") ?: 0.0
                     driverToPay = dRef to dBal
                 }
-            } else if ((status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) && 
-                booking.passengerPaid && !booking.passengerRefunded) {
-                val pId = booking.passengerId ?: return@runTransaction
-                val pRef = usersCol.document(pId)
-                val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
-                passengerToRefund = pRef to pBal
             }
-            
-            var rideToReturnSeats: Pair<DocumentReference, Long>? = null
-            if (status == BookingStatus.CANCELLED && (current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.PICKED_UP)) {
+
+            var rideForCancellation: Ride? = null
+            if (cancellingActiveBooking) {
                 val rideRef = ridesCol.document(booking.rideId)
                 val rideSnap = tx.get(rideRef)
                 if (rideSnap.exists()) {
+                    rideForCancellation = rideSnap.toObject(Ride::class.java)
                     rideToReturnSeats = rideRef to (rideSnap.getLong("seatsAvailable") ?: 0L)
+                }
+            }
+
+            val shouldRefundPassenger = (status == BookingStatus.CANCELLED || status == BookingStatus.REJECTED) &&
+                booking.passengerPaid && !booking.passengerRefunded
+            val shouldPenalizePassenger = status == BookingStatus.CANCELLED &&
+                uid == booking.passengerId &&
+                cancellingActiveBooking &&
+                isAfterPenaltyFreeWindow(
+                    rideForCancellation?.departureTime ?: booking.departureTime,
+                    rideForCancellation?.cancellationLimitMinutes ?: 60
+                )
+
+            if (shouldRefundPassenger || shouldPenalizePassenger) {
+                val pId = booking.passengerId ?: return@runTransaction
+                val pRef = usersCol.document(pId)
+                val pSnap = tx.get(pRef)
+                if (shouldRefundPassenger) {
+                    passengerToRefund = pRef to (pSnap.getDouble("balance") ?: 0.0)
+                }
+                if (shouldPenalizePassenger) {
+                    passengerPenalty = pRef to (pSnap.getDouble("trustScore") ?: 1.0)
                 }
             }
 
@@ -463,6 +497,12 @@ class FirebaseDataSource(
                 tx.update(passengerToRefund.first, "balance", passengerToRefund.second + booking.totalPrice)
                 tx.update(bookingRef, "passengerRefunded", true)
             }
+
+            if (passengerPenalty != null) {
+                val newTrustScore = (passengerPenalty.second - LATE_CANCELLATION_TRUST_PENALTY).coerceAtLeast(0.0)
+                tx.update(passengerPenalty.first, "trustScore", newTrustScore)
+                tx.update(bookingRef, "lateCancellationPenaltyApplied", true)
+            }
             
             if (rideToReturnSeats != null) {
                 val (rideRef, available) = rideToReturnSeats
@@ -472,6 +512,12 @@ class FirebaseDataSource(
 
             tx.update(bookingRef, "status", status.name)
         }.await()
+    }
+
+    private fun isAfterPenaltyFreeWindow(departureTime: Date?, cancellationLimitMinutes: Int, now: Date = Date()): Boolean {
+        val departure = departureTime ?: return false
+        val penaltyFreeUntil = Date(departure.time - cancellationLimitMinutes.coerceAtLeast(0) * 60_000L)
+        return now.after(penaltyFreeUntil)
     }
 
     override fun observePassengerBookings(passengerId: String): Flow<List<Booking>> = callbackFlow {
@@ -605,6 +651,7 @@ class FirebaseDataSource(
 
             var driverToPay: Pair<DocumentReference, Double>? = null
             var passengerToRefund: Pair<DocumentReference, Double>? = null
+            var passengerPenalty: Pair<DocumentReference, Double>? = null
 
             if (status == RequestStatus.COMPLETED) {
                 val driverId = req.driverId
@@ -613,11 +660,24 @@ class FirebaseDataSource(
                     val dBal = tx.get(dRef).getDouble("balance") ?: 0.0
                     driverToPay = dRef to dBal
                 }
-            } else if (status == RequestStatus.CANCELLED && req.passengerPaid && !req.passengerRefunded) {
+            }
+
+            val shouldRefundPassenger = status == RequestStatus.CANCELLED && req.passengerPaid && !req.passengerRefunded
+            val shouldPenalizePassenger = status == RequestStatus.CANCELLED &&
+                uid == req.passengerId &&
+                (current == RequestStatus.ACCEPTED || current == RequestStatus.EN_ROUTE || current == RequestStatus.PICKED_UP) &&
+                isAfterPenaltyFreeWindow(req.requestedTime, DEFAULT_REQUEST_CANCELLATION_LIMIT_MINUTES)
+
+            if (shouldRefundPassenger || shouldPenalizePassenger) {
                 val pId = req.passengerId ?: return@runTransaction
                 val pRef = usersCol.document(pId)
-                val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
-                passengerToRefund = pRef to pBal
+                val pSnap = tx.get(pRef)
+                if (shouldRefundPassenger) {
+                    passengerToRefund = pRef to (pSnap.getDouble("balance") ?: 0.0)
+                }
+                if (shouldPenalizePassenger) {
+                    passengerPenalty = pRef to (pSnap.getDouble("trustScore") ?: 1.0)
+                }
             }
 
             // 2. ALL WRITES
@@ -667,6 +727,12 @@ class FirebaseDataSource(
             if (passengerToRefund != null) {
                 tx.update(passengerToRefund.first, "balance", passengerToRefund.second + req.estimatedPrice)
                 tx.update(ref, "passengerRefunded", true)
+            }
+
+            if (passengerPenalty != null) {
+                val newTrustScore = (passengerPenalty.second - LATE_CANCELLATION_TRUST_PENALTY).coerceAtLeast(0.0)
+                tx.update(passengerPenalty.first, "trustScore", newTrustScore)
+                tx.update(ref, "lateCancellationPenaltyApplied", true)
             }
 
             if (status == RequestStatus.COMPLETED) {

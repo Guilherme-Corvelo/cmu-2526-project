@@ -153,6 +153,7 @@ class MyRequestAdapter(
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvRoute: TextView = v.findViewById(R.id.tv_route)
         val tvPendingBadge: TextView = v.findViewById(R.id.tv_pending_badge)
+        val tvPeriodicBadge: TextView = v.findViewById(R.id.tv_periodic_badge)
         val tvWeatherBadge: TextView = v.findViewById(R.id.tv_weather_badge)
         val tvTime: TextView = v.findViewById(R.id.tv_time)
         val tvPrice: TextView = v.findViewById(R.id.tv_price)
@@ -168,6 +169,8 @@ class MyRequestAdapter(
         if (item is RideRequest) {
             h.tvRoute.text = "${item.origin} → ${item.destination}"
             h.tvPendingBadge.visibility = if (item.isPending) View.VISIBLE else View.GONE
+            h.tvPeriodicBadge.visibility = if (item.periodic) View.VISIBLE else View.GONE
+            h.tvPeriodicBadge.text = item.periodicLabel.ifBlank { "RECURRING" }.uppercase(Locale.getDefault())
             h.tvWeatherBadge.visibility = if (item.weatherWarning) View.VISIBLE else View.GONE
             h.tvTime.text = item.requestedTime?.let { dateFmt.format(it) } ?: "Pending..."
             h.tvPrice.text = "€ %.2f".format(item.estimatedPrice)
@@ -186,6 +189,8 @@ class MyRequestAdapter(
         } else if (item is pt.ulisboa.tecnico.sharist.data.model.Booking) {
             h.tvRoute.text = "${item.origin} → ${item.destination}"
             h.tvPendingBadge.visibility = if (item.isPending) View.VISIBLE else View.GONE
+            h.tvPeriodicBadge.visibility = if (item.recurring) View.VISIBLE else View.GONE
+            h.tvPeriodicBadge.text = if (item.recurring) "RECURRING" else "RECURRING"
             h.tvWeatherBadge.visibility = if (item.weatherWarning) View.VISIBLE else View.GONE
             h.tvTime.text = item.departureTime?.let { dateFmt.format(it) } ?: "Pending..."
             h.tvPrice.text = "€ %.2f".format(item.totalPrice)

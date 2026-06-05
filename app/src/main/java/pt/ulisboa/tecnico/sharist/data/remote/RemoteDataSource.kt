@@ -9,6 +9,7 @@ interface RemoteDataSource {
     suspend fun register(email: String, pass: String): com.google.firebase.auth.AuthResult?
     fun signOut()
     suspend fun createUserProfile(user: User)
+    suspend fun updateUserProfile(user: User)
     suspend fun getUser(uid: String): User?
     suspend fun updateBalance(uid: String, delta: Double)
     suspend fun submitReview(review: Review): String?

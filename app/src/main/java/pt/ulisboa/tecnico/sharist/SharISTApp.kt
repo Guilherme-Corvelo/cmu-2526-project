@@ -92,6 +92,7 @@ class SharISTApp : Application() {
                 }
             }
             override suspend fun createUserProfile(user: User) = delegate.createUserProfile(user)
+            override suspend fun updateUserProfile(user: User) = delegate.updateUserProfile(user)
             override suspend fun getUser(uid: String) = delegate.getUser(uid)
             override suspend fun updateBalance(uid: String, delta: Double) = delegate.updateBalance(uid, delta)
             override suspend fun submitReview(review: Review) = delegate.submitReview(review)

@@ -38,6 +38,8 @@ class CreateRideActivity : AppCompatActivity() {
         val tvDateTime = findViewById<TextView>(R.id.tv_date_time)
         val etSeats = findViewById<EditText>(R.id.et_seats)
         val tvAutoPrice = findViewById<TextView>(R.id.tv_auto_price)
+        val etDurationMinutes = findViewById<EditText>(R.id.et_duration_minutes)
+        val etCancellationLimit = findViewById<EditText>(R.id.et_cancellation_limit)
         val switchPeriodic = findViewById<CompoundButton>(R.id.switch_periodic)
         val spinnerPeriodicity = findViewById<Spinner>(R.id.spinner_periodicity)
         val spinnerWeather = findViewById<Spinner>(R.id.spinner_weather)
@@ -132,15 +134,30 @@ class CreateRideActivity : AppCompatActivity() {
                 }
                 val computedPricePerSeat = ((maxSeats * 2.0) / seats).coerceAtLeast(0.5)
                 tvAutoPrice.text = "Auto price per seat: €%.2f".format(computedPricePerSeat)
+                val durationMinutes = etDurationMinutes.text.toString().toIntOrNull()?.coerceAtLeast(1) ?: 30
+                val estimatedArrival = Calendar.getInstance().apply {
+                    time = selectedCalendar.time
+                    add(Calendar.MINUTE, durationMinutes)
+                }.time
+                val cancellationLimit = etCancellationLimit.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 60
+                val originPoint = MapDemoData.pointFor(origin)
+                val destPoint = MapDemoData.pointFor(dest)
 
                 val ride = Ride(
                     driverId = uid,
                     driverName = user?.displayName ?: "Unknown",
                     driverPhotoUrl = user?.photoUrl,
+                    carPhotoUrl = user?.carPhotoUrl,
                     driverRating = user?.rating ?: 5.0,
                     origin = origin,
+                    originLat = originPoint?.latitude ?: 0.0,
+                    originLng = originPoint?.longitude ?: 0.0,
                     destination = dest,
+                    destinationLat = destPoint?.latitude ?: 0.0,
+                    destinationLng = destPoint?.longitude ?: 0.0,
                     departureTime = selectedCalendar.time,
+                    estimatedArrivalTime = estimatedArrival,
+                    cancellationLimitMinutes = cancellationLimit,
                     seatsTotal = seats,
                     seatsAvailable = seats,
                     periodic = switchPeriodic.isChecked,
