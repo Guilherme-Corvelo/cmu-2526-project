@@ -131,7 +131,6 @@ class MockRemoteDataSource : RemoteDataSource {
     }
 
     override suspend fun updateRequestStatus(requestId: String, status: RequestStatus, reschedule: Boolean) {
-        var nextPeriodicRequest: RideRequest? = null
         DemoRequestStore.requests.value = DemoRequestStore.requests.value.map { req ->
             if (req.id == requestId) {
                 if (status == RequestStatus.CANCELLED && currentUid == req.driverId && req.driverId != null) {
@@ -146,24 +145,6 @@ class MockRemoteDataSource : RemoteDataSource {
                     var updated = req.copy(status = status)
                     
                     if (status == RequestStatus.COMPLETED) {
-                        if (updated.periodic) {
-                            val nextRequest = updated.copy(
-                                id = "demo_req_${UUID.randomUUID()}",
-                                status = RequestStatus.OPEN,
-                                requestedTime = nextOccurrence(updated.requestedTime, updated.periodicLabel),
-                                driverId = null,
-                                hashedDriverId = "",
-                                driverName = null,
-                                driverRating = 5.0,
-                                passengerPaid = false,
-                                passengerRefunded = false,
-                                driverPaid = false,
-                                driverReviewed = false,
-                                passengerReviewed = false,
-                                createdAt = java.util.Date()
-                            )
-                            nextPeriodicRequest = nextRequest
-                        }
                         // Driver gets paid
                         if (currentUid == updated.driverId && !updated.driverPaid) {
                             DemoRideStore.updateBalance(updated.driverId!!, updated.estimatedPrice)
@@ -189,9 +170,6 @@ class MockRemoteDataSource : RemoteDataSource {
                     updated
                 }
             } else req
-        }
-        nextPeriodicRequest?.let { nextRequest ->
-            DemoRequestStore.requests.value = DemoRequestStore.requests.value + nextRequest
         }
     }
 
@@ -237,24 +215,6 @@ class MockRemoteDataSource : RemoteDataSource {
 
     override suspend fun processRideReputation(rideId: String) {
         // Mock implementation for outlier detection could be added here if needed for Demo
-    }
-
-    private fun nextOccurrence(current: java.util.Date?, label: String): java.util.Date? {
-        if (current == null) return null
-        val calendar = java.util.Calendar.getInstance().apply { time = current }
-        when (label) {
-            "Daily" -> calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
-            "Weekdays" -> {
-                do {
-                    calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
-                } while (calendar.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SATURDAY ||
-                    calendar.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.SUNDAY)
-            }
-            "Biweekly" -> calendar.add(java.util.Calendar.WEEK_OF_YEAR, 2)
-            "Monthly" -> calendar.add(java.util.Calendar.MONTH, 1)
-            else -> calendar.add(java.util.Calendar.WEEK_OF_YEAR, 1)
-        }
-        return calendar.time
     }
 
     override fun clearListeners() {

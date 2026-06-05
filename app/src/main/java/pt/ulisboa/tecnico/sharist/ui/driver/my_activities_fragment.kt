@@ -117,9 +117,17 @@ class MyActiveRidesFragment : Fragment() {
                             item is RideJourney && newStatus is BookingStatus && newStatus == BookingStatus.PICKED_UP -> {
                                 var count = 0
                                 item.bookings.forEach { b ->
-                                    if (b.status == BookingStatus.EN_ROUTE) {
-                                        rideRepo.updateBookingStatus(b.id, BookingStatus.PICKED_UP)
-                                        count++
+                                    when (b.status) {
+                                        BookingStatus.ACCEPTED -> {
+                                            rideRepo.updateBookingStatus(b.id, BookingStatus.EN_ROUTE)
+                                            rideRepo.updateBookingStatus(b.id, BookingStatus.PICKED_UP)
+                                            count++
+                                        }
+                                        BookingStatus.EN_ROUTE -> {
+                                            rideRepo.updateBookingStatus(b.id, BookingStatus.PICKED_UP)
+                                            count++
+                                        }
+                                        else -> Unit
                                     }
                                 }
                                 Toast.makeText(requireContext(), "Confirmed pickup for $count passengers", Toast.LENGTH_SHORT).show()
@@ -403,8 +411,9 @@ class ActiveRideAdapter(
 
             item is RideJourney && (item.ride.status == RideStatus.OPEN || item.ride.status == RideStatus.FULL) -> Triple("Journey Ready", "Start Journey", RideStatus.EN_ROUTE)
             item is RideJourney && item.ride.status == RideStatus.EN_ROUTE -> {
-                val allPickedUp = item.bookings.isNotEmpty() && item.bookings.all { it.status == BookingStatus.PICKED_UP }
-                if (allPickedUp) Triple("All passengers onboard", "Finish Journey", RideStatus.COMPLETED)
+                val readyToFinish = item.bookings.isEmpty() ||
+                    item.bookings.all { it.status == BookingStatus.PICKED_UP || it.status == BookingStatus.COMPLETED }
+                if (readyToFinish) Triple("Journey ready to finish", "Finish Journey", RideStatus.COMPLETED)
                 else Triple("Journey in progress", "Confirm All Pickups", BookingStatus.PICKED_UP)
             }
             item is RideJourney && item.ride.status == RideStatus.COMPLETED -> Triple("Journey Completed", "", RideStatus.COMPLETED)
