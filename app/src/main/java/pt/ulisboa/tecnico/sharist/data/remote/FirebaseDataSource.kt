@@ -861,6 +861,7 @@ class FirebaseDataSource(
         val uid = currentUid ?: return null
 
         var targetRideId: String? = null
+        var periodicRequestToReschedule: RideRequest? = null
 
         db.runTransaction { tx ->
             // 1. ALL READS
@@ -921,26 +922,7 @@ class FirebaseDataSource(
                 if (docToUpdate == reqRef && fieldToUpdate == "passengerReviewed") {
                     val req = reqSnap.toObject(RideRequest::class.java)
                     if (req?.periodic == true && req.status == RequestStatus.COMPLETED && uid == req.driverId) {
-                        val nextRef = requestsCol.document()
-                        val nextReq = req.copy(
-                            id = nextRef.id,
-                            status = RequestStatus.OPEN,
-                            requestedTime = calculateNextOccurrence(req.requestedTime, req.periodicLabel),
-                            previousRequestId = req.id,
-                            driverId = null,
-                            hashedDriverId = "",
-                            driverName = null,
-                            driverRating = 5.0,
-                            passengerPaid = false,
-                            passengerRefunded = false,
-                            driverPaid = false,
-                            driverReviewed = false,
-                            passengerReviewed = false,
-                            deniedBy = emptyList(),
-                            deniedDrivers = emptyList(),
-                            createdAt = null
-                        )
-                        tx.set(nextRef, nextReq)
+                        periodicRequestToReschedule = req
                         tx.update(docToUpdate, fieldToUpdate, true)
                         tx.update(docToUpdate, "origin", "anonymized")
                         tx.update(docToUpdate, "destination", "anonymized")
@@ -952,6 +934,14 @@ class FirebaseDataSource(
                 }
             }
         }.await()
+
+        periodicRequestToReschedule?.let { req ->
+            try {
+                publishNextPeriodicRequest(req)
+            } catch (e: Exception) {
+                android.util.Log.e("FirebaseDataSource", "Review submitted, but failed to publish next periodic request ${req.id}", e)
+            }
+        }
         
         targetRideId?.let { rideId ->
             try {
@@ -962,6 +952,29 @@ class FirebaseDataSource(
         }
         
         return targetRideId
+    }
+
+    private suspend fun publishNextPeriodicRequest(req: RideRequest) {
+        val nextRef = requestsCol.document()
+        val nextReq = req.copy(
+            id = nextRef.id,
+            status = RequestStatus.OPEN,
+            requestedTime = calculateNextOccurrence(req.requestedTime, req.periodicLabel),
+            previousRequestId = req.id,
+            driverId = null,
+            hashedDriverId = "",
+            driverName = null,
+            driverRating = 5.0,
+            passengerPaid = false,
+            passengerRefunded = false,
+            driverPaid = false,
+            driverReviewed = false,
+            passengerReviewed = false,
+            deniedBy = emptyList(),
+            deniedDrivers = emptyList(),
+            createdAt = null
+        )
+        nextRef.set(nextReq).await()
     }
 
     override fun observeReviewsForUser(userId: String): Flow<List<Review>> = callbackFlow {
