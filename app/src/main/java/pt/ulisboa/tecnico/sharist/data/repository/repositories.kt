@@ -540,6 +540,7 @@ class RideRequestRepository(
                 remote.observeDriverRequests(driverId)
                     .catch { Log.e("RideRequestRepository", "Remote driver requests error", it) }
                     .collect { list ->
+                        local.requestDao.deleteSyncedDriverRequests(driverId)
                         local.requestDao.upsert(list.map { it.toEntity() })
                     }
             }
