@@ -7,6 +7,7 @@ import android.widget.*
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.*
+import com.google.firebase.FirebaseNetworkException
 import kotlinx.coroutines.launch
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
@@ -26,14 +27,14 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
         _state.value = State.Loading
         session.forceDemoMode = false // Ensure we use real Firebase
         viewModelScope.launch {
-            runCatching { userRepo.signIn(email, password) }
-                .onSuccess { r ->
-                    val uid = r?.user?.uid ?: return@onSuccess.also { _state.value = State.Error("No user") }
-                    val user = userRepo.getUser(uid) ?: return@onSuccess.also { _state.value = State.Error("Profile not found") }
-                    session.save(uid, if (user.driver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName)
-                    _state.value = State.Success
-                }
-                .onFailure { _state.value = State.Error(it.message ?: "Login failed") }
+            runCatching {
+                val r = userRepo.signIn(email, password)
+                val uid = r?.user?.uid ?: error("No user")
+                val user = userRepo.getUser(uid) ?: error("Profile not found")
+                session.save(uid, if (user.driver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, user.displayName)
+            }
+                .onSuccess { _state.value = State.Success }
+                .onFailure { _state.value = State.Error(it.toAuthErrorMessage("Login failed")) }
         }
     }
 
@@ -62,14 +63,24 @@ class AuthViewModel(private val userRepo: UserRepository, private val session: S
                         vehiclePlate = if (isDriver) vehiclePlate else ""
                     )
                 )
-                uid
+                session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name)
             }
-                .onSuccess { uid ->
-                    session.save(uid, if (isDriver) SessionManager.ROLE_DRIVER else SessionManager.ROLE_PASSENGER, name)
-                    _state.value = State.Success
-                }
-                .onFailure { _state.value = State.Error(it.message ?: "Registration failed") }
+                .onSuccess { _state.value = State.Success }
+                .onFailure { _state.value = State.Error(it.toAuthErrorMessage("Registration failed")) }
         }
+    }
+
+    private fun Throwable.toAuthErrorMessage(fallback: String): String {
+        val rawMessage = message ?: return fallback
+        val isNetworkError = this is FirebaseNetworkException ||
+                rawMessage.contains("network", ignoreCase = true) ||
+                rawMessage.contains("timeout", ignoreCase = true) ||
+                rawMessage.contains("interrupted connection", ignoreCase = true) ||
+                rawMessage.contains("unreachable host", ignoreCase = true)
+        if (isNetworkError) {
+            return "Network connection failed. Check your internet connection and try again, or use Demo Client/Driver offline."
+        }
+        return rawMessage
     }
 }
 
@@ -186,6 +197,7 @@ class AuthActivity : AppCompatActivity() {
             progressBar.visibility = if (state is AuthViewModel.State.Loading) View.VISIBLE else View.GONE
             btnSubmit.isEnabled = state !is AuthViewModel.State.Loading
             when (state) {
+                is AuthViewModel.State.Loading -> tvError.visibility = View.GONE
                 is AuthViewModel.State.Success -> startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
                 is AuthViewModel.State.Error -> {
                     tvError.visibility = View.VISIBLE
