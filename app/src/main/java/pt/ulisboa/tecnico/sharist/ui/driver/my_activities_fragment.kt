@@ -105,8 +105,43 @@ class MyActiveRidesFragment : Fragment() {
                                 }
                             }
                             item is Booking && newStatus is BookingStatus -> {
-                                rideRepo.updateBookingStatus(item.id, newStatus)
-                                Toast.makeText(requireContext(), "Booking updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                                val res = rideRepo.updateBookingStatus(item.id, newStatus)
+                                if (res.isSuccess) {
+                                    Toast.makeText(requireContext(), "Booking updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(requireContext(), "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            item is RideJourney && newStatus is BookingStatus && newStatus == BookingStatus.CANCELLED -> {
+                                val cancellableBookings = item.bookings.filter { booking ->
+                                    booking.status == BookingStatus.ACCEPTED ||
+                                        booking.status == BookingStatus.EN_ROUTE ||
+                                        booking.status == BookingStatus.PICKED_UP
+                                }
+                                if (cancellableBookings.isEmpty()) {
+                                    val res = rideRepo.cancelRide(item.ride.id)
+                                    if (res.isSuccess) {
+                                        Toast.makeText(requireContext(), "Ride cancelled", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(requireContext(), "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                } else {
+                                    var cancelledCount = 0
+                                    var firstError: Throwable? = null
+                                    cancellableBookings.forEach { booking ->
+                                        val res = rideRepo.updateBookingStatus(booking.id, BookingStatus.CANCELLED)
+                                        if (res.isSuccess) {
+                                            cancelledCount++
+                                        } else if (firstError == null) {
+                                            firstError = res.exceptionOrNull()
+                                        }
+                                    }
+                                    if (firstError == null) {
+                                        Toast.makeText(requireContext(), "Cancelled $cancelledCount booking(s); ride is open again", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(requireContext(), "Cancelled $cancelledCount booking(s). Error: ${firstError?.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                             item is RideJourney && newStatus is RideStatus -> {
                                 if (newStatus == RideStatus.EN_ROUTE || newStatus == RideStatus.COMPLETED) {
@@ -540,7 +575,17 @@ class ActiveRideAdapter(
             when (item) {
                 is RideRequest -> onUpdateStatus(item, RequestStatus.CANCELLED)
                 is Booking -> onUpdateStatus(item, BookingStatus.CANCELLED)
-                is RideJourney -> onUpdateStatus(item, RideStatus.CANCELLED)
+                is RideJourney -> {
+                    if (item.bookings.any { booking ->
+                            booking.status == BookingStatus.ACCEPTED ||
+                                booking.status == BookingStatus.EN_ROUTE ||
+                                booking.status == BookingStatus.PICKED_UP
+                        }) {
+                        onUpdateStatus(item, BookingStatus.CANCELLED)
+                    } else {
+                        onUpdateStatus(item, RideStatus.CANCELLED)
+                    }
+                }
             }
         }
         
