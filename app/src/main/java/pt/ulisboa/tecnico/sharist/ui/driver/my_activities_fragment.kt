@@ -97,9 +97,18 @@ class MyActiveRidesFragment : Fragment() {
                                     ).show()
                                     return@launch
                                 }
-                                val res = requestRepo.updateRequestStatus(item.id, newStatus)
+                                val res = if (newStatus == RequestStatus.CANCELLED) {
+                                    requestRepo.releaseAcceptedRequest(item.id)
+                                } else {
+                                    requestRepo.updateRequestStatus(item.id, newStatus)
+                                }
                                 if (res.isSuccess) {
-                                    Toast.makeText(requireContext(), "Status updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+                                    val message = if (newStatus == RequestStatus.CANCELLED) {
+                                        "Request released and available again"
+                                    } else {
+                                        "Status updated to ${newStatus.name}"
+                                    }
+                                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
                                 } else {
                                     Toast.makeText(requireContext(), "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                 }
