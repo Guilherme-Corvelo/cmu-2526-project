@@ -55,6 +55,7 @@ class FirebaseDataSource(
         val targetName = when (target) {
             PhotoUploadTarget.PROFILE -> "profile"
             PhotoUploadTarget.CAR -> "car"
+            PhotoUploadTarget.LOCATION -> "location"
         }
         val photoRef = userPhotosRef.child(safeUid).child("${targetName}_${UUID.randomUUID()}.jpg")
         val uploadSnapshot = photoRef.putFile(imageUri).await()
@@ -922,7 +923,8 @@ class FirebaseDataSource(
                 driverId = driverId,
                 passengerPaid = requestIsPrepaid,
                 passengerRefunded = false,
-                weatherCondition = req.weatherCondition
+                weatherCondition = req.weatherCondition,
+                originPhotoUrl = req.originPhotoUrl
             )
             
             tx.set(bookingRef, booking)

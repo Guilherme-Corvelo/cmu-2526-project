@@ -4,7 +4,7 @@ import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import pt.ulisboa.tecnico.sharist.data.model.*
 
-enum class PhotoUploadTarget { PROFILE, CAR }
+enum class PhotoUploadTarget { PROFILE, CAR, LOCATION }
 
 interface RemoteDataSource {
     val currentUid: String?

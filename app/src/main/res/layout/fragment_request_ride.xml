@@ -153,6 +153,31 @@
         </LinearLayout>
 
         <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Pickup location photo (optional)"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="4dp"/>
+
+        <ImageView
+            android:id="@+id/iv_origin_photo"
+            android:layout_width="match_parent"
+            android:layout_height="140dp"
+            android:scaleType="centerCrop"
+            android:src="@drawable/ic_car_placeholder"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp"/>
+
+        <Button
+            android:id="@+id/btn_pick_origin_photo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Take/Choose photo"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
             android:id="@+id/tv_estimated_price"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

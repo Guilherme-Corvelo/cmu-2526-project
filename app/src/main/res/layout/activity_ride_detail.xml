@@ -196,6 +196,15 @@
             android:textStyle="bold"
             android:text="Pending request"/>
 
+        <ImageView
+            android:id="@+id/iv_request_origin_photo"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp"
+            android:contentDescription="Passenger's pickup location photo"/>
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

@@ -28,10 +28,26 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+import androidx.activity.result.contract.ActivityResultContracts
+import pt.ulisboa.tecnico.sharist.data.remote.PhotoUploadTarget
+import pt.ulisboa.tecnico.sharist.data.repository.UserRepository
+
 class RequestRideFragment : Fragment() {
     private lateinit var mapView: MapView
     private lateinit var requestRepo: RideRequestRepository
+    private lateinit var userRepo: UserRepository
     private var userFavorites: List<FavoriteLocation> = emptyList()
+    private var originPhotoUri: android.net.Uri? = null
+
+    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            originPhotoUri = it
+            view?.findViewById<ImageView>(R.id.iv_origin_photo)?.let { iv ->
+                iv.setImageURI(it)
+                iv.visibility = View.VISIBLE
+            }
+        }
+    }
 
     private data class LocationItem(val name: String, val isFavorite: Boolean) {
         override fun toString(): String = name
@@ -69,6 +85,7 @@ class RequestRideFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         val app = requireActivity().application as SharISTApp
         requestRepo = app.requestRepository
+        userRepo = app.userRepository
         val session = app.sessionManager
 
         // View Initializations
@@ -90,6 +107,11 @@ class RequestRideFragment : Fragment() {
         val tvWeatherWarningText = view.findViewById<TextView>(R.id.tv_weather_warning_text)
         val btnPickTime = view.findViewById<Button>(R.id.btn_pick_time)
         val btnRequest = view.findViewById<Button>(R.id.btn_request)
+        val btnPickOriginPhoto = view.findViewById<Button>(R.id.btn_pick_origin_photo)
+
+        btnPickOriginPhoto.setOnClickListener {
+            pickImageLauncher.launch("image/*")
+        }
         mapView = view.findViewById(R.id.request_map)
         mapView.setTileSource(TileSourceFactory.MAPNIK)
         mapView.setMultiTouchControls(true)
@@ -398,37 +420,50 @@ class RequestRideFragment : Fragment() {
 
             val estimatedPrice = PriceCalculator.estimate(origin, destination)
 
-            val request = RideRequest(
-                passengerId = session.uid ?: "",
-                passengerName = session.displayName ?: "Anonymous",
-                origin = origin,
-                originLat = originPoint.latitude,
-                originLng = originPoint.longitude,
-                destination = destination,
-                destinationLat = destinationPoint.latitude,
-                destinationLng = destinationPoint.longitude,
-                originRadius = etOriginRadius.text.toString().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 500.0,
-                destinationRadius = etDestinationRadius.text.toString().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 500.0,
-                requestedTime = selectedTime.time,
-                timeToleranceBefore = etToleranceBefore.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 15,
-                timeToleranceAfter = etToleranceAfter.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 15,
-                periodic = switchPeriodic.isChecked,
-                periodicLabel = if (switchPeriodic.isChecked) periodicLabels[spinnerPeriodicity.selectedItemPosition] else "",
-                estimatedPrice = estimatedPrice,
-                status = RequestStatus.OPEN,
-                weatherCondition = WeatherCondition(
-                    type = WeatherType.values()[spinnerWeather.selectedItemPosition],
-                    threshold = etThreshold.text.toString().toDoubleOrNull()
-                ),
-                createdAt = Date()
-            )
-
             viewLifecycleOwner.lifecycleScope.launch {
+                btnRequest.isEnabled = false
+                
+                var originUrl: String? = null
+                if (originPhotoUri != null) {
+                    try {
+                        originUrl = userRepo.uploadPhoto(session.uid ?: "anon", originPhotoUri!!, PhotoUploadTarget.LOCATION)
+                    } catch (e: Exception) {
+                        Toast.makeText(requireContext(), "Failed to upload photo, continuing without it.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                val request = RideRequest(
+                    passengerId = session.uid ?: "",
+                    passengerName = session.displayName ?: "Anonymous",
+                    origin = origin,
+                    originLat = originPoint.latitude,
+                    originLng = originPoint.longitude,
+                    originPhotoUrl = originUrl,
+                    destination = destination,
+                    destinationLat = destinationPoint.latitude,
+                    destinationLng = destinationPoint.longitude,
+                    originRadius = etOriginRadius.text.toString().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 500.0,
+                    destinationRadius = etDestinationRadius.text.toString().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 500.0,
+                    requestedTime = selectedTime.time,
+                    timeToleranceBefore = etToleranceBefore.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 15,
+                    timeToleranceAfter = etToleranceAfter.text.toString().toIntOrNull()?.coerceAtLeast(0) ?: 15,
+                    periodic = switchPeriodic.isChecked,
+                    periodicLabel = if (switchPeriodic.isChecked) periodicLabels[spinnerPeriodicity.selectedItemPosition] else "",
+                    estimatedPrice = estimatedPrice,
+                    status = RequestStatus.OPEN,
+                    weatherCondition = WeatherCondition(
+                        type = WeatherType.values()[spinnerWeather.selectedItemPosition],
+                        threshold = etThreshold.text.toString().toDoubleOrNull()
+                    ),
+                    createdAt = Date()
+                )
+
                 val result = requestRepo.createRequest(request)
                 if (result.isSuccess) {
                     Toast.makeText(requireContext(), "Request created successfully!", Toast.LENGTH_SHORT).show()
                     findNavController().navigate(R.id.action_request_to_my_requests)
                 } else {
+                    btnRequest.isEnabled = true
                     Toast.makeText(
                         requireContext(),
                         "Failed to create request: ${result.exceptionOrNull()?.message}",

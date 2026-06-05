@@ -25,6 +25,15 @@
         android:layout_marginTop="6dp"
         android:background="#DDDDDD" />
 
+    <ImageView
+        android:id="@+id/iv_request_origin_photo"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:layout_marginTop="8dp"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        android:contentDescription="Passenger's pickup location photo"/>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_requests"
         android:layout_width="match_parent"

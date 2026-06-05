@@ -6,7 +6,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import android.widget.ImageView
 import android.widget.Toast
+import com.bumptech.glide.Glide
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
@@ -39,6 +41,7 @@ class AvailableRequestsFragment : Fragment() {
     private lateinit var mapView: MapView
     private lateinit var requestRepo: RideRequestRepository
     private lateinit var userRepo: UserRepository
+    private lateinit var ivOriginPhoto: ImageView
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_available_requests, container, false)
@@ -47,6 +50,7 @@ class AvailableRequestsFragment : Fragment() {
         val app = requireActivity().application as SharISTApp
         requestRepo = app.requestRepository
         userRepo = app.userRepository
+        ivOriginPhoto = view.findViewById(R.id.iv_request_origin_photo)
         val session = app.sessionManager
         val recycler = view.findViewById<RecyclerView>(R.id.recycler_requests)
         val tvEmpty = view.findViewById<TextView>(R.id.tv_empty)
@@ -130,10 +134,18 @@ class AvailableRequestsFragment : Fragment() {
     private fun renderPreviewRoute(ride: RideRequest?) {
         mapView.overlays.clear()
         if (ride == null) {
+            ivOriginPhoto.visibility = View.GONE
             mapView.controller.animateTo(MapDemoData.lisbon)
             mapView.controller.setZoom(13.0)
             mapView.invalidate()
             return
+        }
+
+        if (ride.originPhotoUrl != null) {
+            ivOriginPhoto.visibility = View.VISIBLE
+            Glide.with(this).load(ride.originPhotoUrl).into(ivOriginPhoto)
+        } else {
+            ivOriginPhoto.visibility = View.GONE
         }
         val origin = MapDemoData.pointFor(ride.origin)
         val destination = MapDemoData.pointFor(ride.destination)

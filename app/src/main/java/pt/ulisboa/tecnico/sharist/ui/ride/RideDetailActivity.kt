@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import com.bumptech.glide.Glide
 import pt.ulisboa.tecnico.sharist.R
 import pt.ulisboa.tecnico.sharist.SharISTApp
 import pt.ulisboa.tecnico.sharist.data.model.*
@@ -247,13 +248,16 @@ class RideDetailActivity : AppCompatActivity() {
                 val app = application as SharISTApp
                 @Suppress("UNCHECKED_CAST")
                 return RideDetailViewModel(
-                    app.rideRepository, app.userRepository, WeatherService()
+                    app.rideRepository,
+                    app.userRepository,
+                    app.weatherService
                 ) as T
             }
         }
     }
 
     private lateinit var ivCarPhoto: ImageView
+    private lateinit var ivRequestOriginPhoto: ImageView
     private lateinit var tvDriverName: TextView
     private lateinit var tvRating: TextView
     private lateinit var tvRoute: TextView
@@ -290,11 +294,13 @@ class RideDetailActivity : AppCompatActivity() {
         bindViews()
         val rideId = intent.getStringExtra("RIDE_ID") ?: return
         viewModel.loadRide(rideId)
+        setupClickListeners(rideId)
         observeViewModel(rideId)
     }
 
     private fun bindViews() {
         ivCarPhoto       = findViewById(R.id.iv_car_photo)
+        ivRequestOriginPhoto = findViewById(R.id.iv_request_origin_photo)
         tvDriverName     = findViewById(R.id.tv_driver_name)
         tvRating         = findViewById(R.id.tv_rating)
         tvRoute          = findViewById(R.id.tv_route)
@@ -320,10 +326,6 @@ class RideDetailActivity : AppCompatActivity() {
         etThreshold      = findViewById(R.id.et_threshold)
         progressBar      = findViewById(R.id.progress_bar)
 
-        setupWeatherPreferences()
-    }
-
-    private fun setupWeatherPreferences() {
         val weatherTypes = WeatherType.values().map { it.name }
         val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, weatherTypes)
         actvWeatherType.setAdapter(adapter)
@@ -352,6 +354,94 @@ class RideDetailActivity : AppCompatActivity() {
         val type = WeatherType.valueOf(actvWeatherType.text.toString())
         val threshold = etThreshold.text.toString().toDoubleOrNull()
         viewModel.setWeatherCondition(WeatherCondition(type, threshold))
+    }
+
+    private fun setupClickListeners(rideId: String) {
+        btnBook.setOnClickListener {
+            val ride = viewModel.ride.value ?: return@setOnClickListener
+            val isOwner = viewModel.isRideOwner.value
+            val joined = viewModel.joinedBookings.value
+            val currentUid = (application as SharISTApp).userRepository.currentUid
+            val myBooking = joined.firstOrNull { it.passengerId == currentUid }
+            val isEnRoute = ride.status == RideStatus.EN_ROUTE
+            val needsConfirmation = !isOwner && (isEnRoute || ride.status == RideStatus.COMPLETED) && myBooking?.status == BookingStatus.EN_ROUTE
+
+            if (needsConfirmation) {
+                myBooking?.id?.let { bookingId ->
+                    AlertDialog.Builder(this)
+                        .setTitle("Confirm Pickup")
+                        .setMessage("Confirm that your driver has picked you up. The driver can only finish the ride after pickup is confirmed.")
+                        .setPositiveButton("Confirm") { _, _ -> viewModel.confirmPickup(bookingId) }
+                        .setNegativeButton("Not yet", null)
+                        .show()
+                }
+            } else if (ride.seatsAvailable > 0) {
+                val passengerWarning = viewModel.passengerWeatherWarning.value
+                if (passengerWarning == WeatherWarning.WILL_CANCEL) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Weather Warning")
+                        .setMessage("This ride currently violates your personal weather preferences. Do you still want to book it?")
+                        .setPositiveButton("Book Anyway") { _, _ ->
+                            viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                } else {
+                    viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
+                }
+            }
+        }
+
+        btnCancelRide.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Cancel Ride")
+                .setMessage("Are you sure you want to cancel this ride?")
+                .setPositiveButton("Yes") { _, _ -> viewModel.cancelRide(rideId) }
+                .setNegativeButton("No", null)
+                .show()
+        }
+
+        btnStartRide.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Start Ride")
+                .setMessage("Are you ready to depart?")
+                .setPositiveButton("Start") { _, _ -> viewModel.startRide(rideId) }
+                .setNegativeButton("Not yet", null)
+                .show()
+        }
+
+        btnFinishRide.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Finish Ride")
+                .setMessage("Have you reached your destination?")
+                .setPositiveButton("Finish") { _, _ -> viewModel.finishRide(rideId) }
+                .setNegativeButton("No", null)
+                .show()
+        }
+
+        btnAcceptRequest.setOnClickListener {
+            selectedPendingBooking?.id?.let { viewModel.respondToBooking(it, true) }
+        }
+
+        btnRejectRequest.setOnClickListener {
+            selectedPendingBooking?.id?.let { viewModel.respondToBooking(it, false) }
+        }
+
+        btnViewPassengerProfile.setOnClickListener {
+            val booking = selectedPendingBooking ?: viewModel.joinedBookings.value.firstOrNull()
+            if (booking == null) {
+                Toast.makeText(this, "No passengers have joined yet.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            lifecycleScope.launch {
+                val pId = booking.passengerId
+                if (pId != null) {
+                    showPassengerProfileDialog(pId, booking.passengerName)
+                } else {
+                    Toast.makeText(this@RideDetailActivity, "User profile is anonymized for privacy.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun observeViewModel(rideId: String) {
@@ -437,9 +527,14 @@ class RideDetailActivity : AppCompatActivity() {
                             val seatsLabel = if (first.seatsRequested == 1) "seat" else "seats"
                             val suffix = if (count > 1) " (+${count - 1} more)" else ""
                             tvRequests.text = "Pending request: ${first.passengerName} (${first.seatsRequested} $seatsLabel)$suffix"
-                            btnAcceptRequest.setOnClickListener { viewModel.respondToBooking(first.id, true) }
-                            btnRejectRequest.setOnClickListener { viewModel.respondToBooking(first.id, false) }
                             cvWeatherPrefs.visibility = View.GONE
+
+                            if (first.originPhotoUrl != null) {
+                                ivRequestOriginPhoto.visibility = View.VISIBLE
+                                Glide.with(this@RideDetailActivity).load(first.originPhotoUrl).into(ivRequestOriginPhoto)
+                            } else {
+                                ivRequestOriginPhoto.visibility = View.GONE
+                            }
                         }
 
                         // Profile button state for owner
@@ -476,77 +571,39 @@ class RideDetailActivity : AppCompatActivity() {
                             btnBook.isEnabled = needsPickupConfirmation || (ride.seatsAvailable > 0 && isOpenOrFull)
                         }
                     }
-
-                    btnBook.setOnClickListener {
-                        if (needsPickupConfirmation && myActiveBooking != null) {
-                            AlertDialog.Builder(this@RideDetailActivity)
-                                .setTitle("Confirm Pickup")
-                                .setMessage("Confirm that your driver has picked you up. The driver can only finish the ride after pickup is confirmed.")
-                                .setPositiveButton("Confirm") { _, _ -> viewModel.confirmPickup(myActiveBooking.id) }
-                                .setNegativeButton("Not yet", null)
-                                .show()
-                        } else if (ride.seatsAvailable > 0) {
-                            if (passengerWarning == WeatherWarning.WILL_CANCEL) {
-                                AlertDialog.Builder(this@RideDetailActivity)
-                                    .setTitle("Weather Warning")
-                                    .setMessage("This ride currently violates your personal weather preferences. Do you still want to book it?")
-                                    .setPositiveButton("Book Anyway") { _, _ ->
-                                        viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
-                                    }
-                                    .setNegativeButton("Cancel", null)
-                                    .show()
-                            } else {
-                                viewModel.bookRide(rideId, seats = 1, recurring = cbRecurringBooking.isChecked)
-                            }
-                        }
-                    }
                 }.collect()
-
-                launch {
-                    viewModel.bookingState.collect { state ->
-                        progressBar.visibility =
-                            if (state is RideDetailViewModel.BookingState.Loading) View.VISIBLE else View.GONE
-
-                        when (state) {
-                            is RideDetailViewModel.BookingState.Success -> {
-                                val msg = when {
-                                    state.bookingId == "pickup_confirmed" -> "Pickup confirmed. The driver can now finish the ride."
-                                    state.bookingId == "started" -> "Ride started. Passengers must confirm pickup before you can finish."
-                                    state.bookingId == "completed" -> "Ride completed."
-                                    state.isPending -> "Booking queued – will be confirmed when you're back online"
-                                    else -> "Booking confirmed! ID: ${state.bookingId}"
-                                }
-                                AlertDialog.Builder(this@RideDetailActivity)
-                                    .setTitle("Done")
-                                    .setMessage(msg)
-                                    .setPositiveButton("OK") { _, _ ->
-                                        if (state.bookingId != "pickup_confirmed" && state.bookingId != "started") {
-                                            finish()
-                                        }
-                                    }
-                                    .show()
-                            }
-                            is RideDetailViewModel.BookingState.Error ->
-                                Toast.makeText(this@RideDetailActivity, state.message, Toast.LENGTH_LONG).show()
-                            else -> Unit
-                        }
-                    }
-                }
             }
         }
 
-        btnViewPassengerProfile.setOnClickListener {
-            val booking = selectedPendingBooking ?: viewModel.joinedBookings.value.firstOrNull()
-            if (booking == null) {
-                Toast.makeText(this, "No passengers have joined yet.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            lifecycleScope.launch {
-                val pId = booking.passengerId
-                if (pId != null) {
-                    showPassengerProfileDialog(pId, booking.passengerName)
-                } else {
-                    Toast.makeText(this@RideDetailActivity, "User profile is anonymized for privacy.", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.bookingState.collect { state ->
+                    progressBar.visibility =
+                        if (state is RideDetailViewModel.BookingState.Loading) View.VISIBLE else View.GONE
+
+                    when (state) {
+                        is RideDetailViewModel.BookingState.Success -> {
+                            val msg = when {
+                                state.bookingId == "pickup_confirmed" -> "Pickup confirmed. The driver can now finish the ride."
+                                state.bookingId == "started" -> "Ride started. Passengers must confirm pickup before you can finish."
+                                state.bookingId == "completed" -> "Ride completed."
+                                state.isPending -> "Booking queued – will be confirmed when you're back online"
+                                else -> "Booking confirmed! ID: ${state.bookingId}"
+                            }
+                            AlertDialog.Builder(this@RideDetailActivity)
+                                .setTitle("Done")
+                                .setMessage(msg)
+                                .setPositiveButton("OK") { _, _ ->
+                                    if (state.bookingId != "pickup_confirmed" && state.bookingId != "started") {
+                                        finish()
+                                    }
+                                }
+                                .show()
+                        }
+                        is RideDetailViewModel.BookingState.Error ->
+                            Toast.makeText(this@RideDetailActivity, state.message, Toast.LENGTH_LONG).show()
+                        else -> Unit
+                    }
                 }
             }
         }
@@ -578,37 +635,6 @@ class RideDetailActivity : AppCompatActivity() {
             placeholder = R.drawable.ic_car_placeholder,
             network     = app.networkMonitor
         )
-
-        btnBook.setOnClickListener {
-            // Handled inside flow collector to access real-time weather warnings
-        }
-
-        btnCancelRide.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Cancel Ride")
-                .setMessage("Are you sure you want to cancel this ride?")
-                .setPositiveButton("Yes") { _, _ -> viewModel.cancelRide(rideId) }
-                .setNegativeButton("No", null)
-                .show()
-        }
-
-        btnStartRide.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Start Ride")
-                .setMessage("Are you ready to depart?")
-                .setPositiveButton("Start") { _, _ -> viewModel.startRide(rideId) }
-                .setNegativeButton("Not yet", null)
-                .show()
-        }
-
-        btnFinishRide.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("Finish Ride")
-                .setMessage("Have you reached your destination?")
-                .setPositiveButton("Finish") { _, _ -> viewModel.finishRide(rideId) }
-                .setNegativeButton("No", null)
-                .show()
-        }
     }
 
     override fun onSupportNavigateUp(): Boolean { finish(); return true }

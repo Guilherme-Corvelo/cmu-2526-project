@@ -175,7 +175,8 @@ data class Booking(
     val passengerRefunded: Boolean = false,
     val weatherCondition: WeatherCondition = WeatherCondition(),
     val weatherWarning: Boolean = false,
-    @get:PropertyName("pending") @set:PropertyName("pending") var isPending: Boolean = false
+    @get:PropertyName("pending") @set:PropertyName("pending") var isPending: Boolean = false,
+    val originPhotoUrl: String? = null
 )
 
 enum class BookingStatus { PENDING, ACCEPTED, EN_ROUTE, PICKED_UP, COMPLETED, CANCELLED, REJECTED }
@@ -405,6 +406,7 @@ data class BookingEntity(
     val weatherThreshold: Double? = null,
     val weatherWarning: Boolean = false,
     val isPending: Boolean = false,
+    val originPhotoUrl: String? = null,
     val cachedAtMs: Long = System.currentTimeMillis()
 )
 
@@ -413,7 +415,7 @@ fun Booking.toEntity() = BookingEntity(
     seatsRequested, totalPrice, status.name, createdAt?.time ?: System.currentTimeMillis(),
     origin, originLat, originLng, destination, destinationLat, destinationLng, departureTime?.time ?: 0L, driverName, driverId, hashedDriverId,
     recurring, passengerReviewed, driverReviewed, passengerPaid, driverPaid, passengerRefunded,
-    weatherCondition.type.name, weatherCondition.threshold, weatherWarning, isPending
+    weatherCondition.type.name, weatherCondition.threshold, weatherWarning, isPending, originPhotoUrl
 )
 
 fun BookingEntity.toDomain() = Booking(
@@ -433,7 +435,8 @@ fun BookingEntity.toDomain() = Booking(
         threshold = weatherThreshold
     ),
     weatherWarning = weatherWarning,
-    isPending = isPending
+    isPending = isPending,
+    originPhotoUrl = originPhotoUrl
 )
 
 @Entity(tableName = "pending_operations")

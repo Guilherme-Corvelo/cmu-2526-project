@@ -127,7 +127,6 @@ class HomeFragment : Fragment() {
                     val total = llm.itemCount
                     val lastVisible = llm.findLastVisibleItemPosition()
                     if (lastVisible >= total - 5) {
-                        // TODO: trigger pagination / next Firestore page
                     }
                 }
             })
