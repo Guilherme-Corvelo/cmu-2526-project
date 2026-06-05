@@ -690,8 +690,18 @@ class FirebaseDataSource(
                 return@runTransaction
             }
 
-            // Reschedule logic for periodic requests
-            if (reschedule && req.periodic && status == RequestStatus.CANCELLED) {
+            // Allow idempotent transitions for auto-refund
+            val valid = when (status) {
+                RequestStatus.COMPLETED -> current != RequestStatus.CANCELLED
+                RequestStatus.CANCELLED -> current != RequestStatus.COMPLETED
+                else -> true
+            }
+            if (!valid) return@runTransaction
+
+            // Reschedule logic for periodic requests. Completing a passenger-created
+            // periodic ride should immediately publish the next occurrence so the
+            // driver can finish the current one without ending the recurring series.
+            if (req.periodic && (status == RequestStatus.COMPLETED || (reschedule && status == RequestStatus.CANCELLED))) {
                 val nextRef = requestsCol.document()
                 val nextDate = calculateNextOccurrence(req.requestedTime, req.periodicLabel)
                 val nextReq = req.copy(
@@ -699,6 +709,7 @@ class FirebaseDataSource(
                     status = RequestStatus.OPEN,
                     requestedTime = nextDate,
                     driverId = null,
+                    hashedDriverId = "",
                     driverName = null,
                     driverRating = 5.0,
                     passengerPaid = false,
@@ -710,14 +721,6 @@ class FirebaseDataSource(
                 )
                 tx.set(nextRef, nextReq)
             }
-
-            // Allow idempotent transitions for auto-refund
-            val valid = when (status) {
-                RequestStatus.COMPLETED -> current != RequestStatus.CANCELLED
-                RequestStatus.CANCELLED -> current != RequestStatus.COMPLETED
-                else -> true
-            }
-            if (!valid) return@runTransaction
 
             if (driverToPay != null) {
                 tx.update(driverToPay.first, "balance", driverToPay.second + req.estimatedPrice)
@@ -807,6 +810,13 @@ class FirebaseDataSource(
             if (req.status != RequestStatus.OPEN) error("Request already taken")
 
             val passengerId = req.passengerId ?: "unknown"
+            var passengerToCharge: Pair<DocumentReference, Double>? = null
+            if (!req.passengerPaid && passengerId != "unknown") {
+                val pRef = usersCol.document(passengerId)
+                val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
+                if (pBal < req.estimatedPrice) error("Passenger has insufficient balance")
+                passengerToCharge = pRef to pBal
+            }
 
             // Convert Request to Booking
             val bookingRef = bookingsCol.document()
@@ -828,7 +838,18 @@ class FirebaseDataSource(
             )
             
             tx.set(bookingRef, booking)
-            tx.update(ref, mapOf("status" to RequestStatus.ACCEPTED.name, "driverId" to driverId, "driverName" to driverName, "driverRating" to driverRating))
+            val requestUpdates = mutableMapOf<String, Any>(
+                "status" to RequestStatus.ACCEPTED.name,
+                "driverId" to driverId,
+                "driverName" to driverName,
+                "driverRating" to driverRating
+            )
+            if (passengerToCharge != null) {
+                tx.update(passengerToCharge.first, "balance", passengerToCharge.second - req.estimatedPrice)
+                requestUpdates["passengerPaid"] = true
+                requestUpdates["passengerRefunded"] = false
+            }
+            tx.update(ref, requestUpdates)
         }.await()
     }
 

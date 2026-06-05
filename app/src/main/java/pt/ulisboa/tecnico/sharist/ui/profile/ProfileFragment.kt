@@ -80,9 +80,10 @@ class ProfileFragment : Fragment() {
         }
 
         val session = app.sessionManager
-        val currentUid = userRepo.currentUid
-        val targetUid = arguments?.getString("userId") ?: currentUid
-        isOwnProfile = targetUid == currentUid
+        val currentUid = userRepo.currentUid ?: session.uid
+        val explicitTargetUid = arguments?.getString("userId")
+        val targetUid = explicitTargetUid ?: currentUid
+        isOwnProfile = explicitTargetUid == null || targetUid == currentUid
 
         btnProfilePhoto.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
         btnCarPhoto.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
