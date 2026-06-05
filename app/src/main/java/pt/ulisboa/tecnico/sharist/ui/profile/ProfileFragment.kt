@@ -1,14 +1,16 @@
 package pt.ulisboa.tecnico.sharist.ui.profile
 
 import android.content.Intent
+import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Bundle
 import android.view.*
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.OpenDocument
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.catch
@@ -20,6 +22,7 @@ import pt.ulisboa.tecnico.sharist.data.model.User
 import pt.ulisboa.tecnico.sharist.data.model.VehicleType
 import pt.ulisboa.tecnico.sharist.ui.auth.AuthActivity
 import pt.ulisboa.tecnico.sharist.ui.demo.DemoRequestStore
+import pt.ulisboa.tecnico.sharist.ui.demo.DemoRideStore
 import pt.ulisboa.tecnico.sharist.utils.ImageLoader
 import pt.ulisboa.tecnico.sharist.utils.SessionManager
 
@@ -35,23 +38,73 @@ class ProfileFragment : Fragment() {
 
     private enum class PhotoTarget { PROFILE, CAR }
 
-    private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    private val pickImage = registerForActivityResult(OpenDocument()) { uri: Uri? ->
         val user = currentProfile ?: return@registerForActivityResult
         if (!isOwnProfile || uri == null) return@registerForActivityResult
-        val updated = when (pendingPhotoTarget) {
-            PhotoTarget.PROFILE -> user.copy(photoUrl = uri.toString())
-            PhotoTarget.CAR -> user.copy(carPhotoUrl = uri.toString())
-        }
+
         viewLifecycleOwner.lifecycleScope.launch {
-            runCatching { userRepo.updateProfile(updated) }
-                .onSuccess {
-                    currentProfile = updated
-                    bindImages(requireView(), updated)
-                    Toast.makeText(requireContext(), "Photo saved", Toast.LENGTH_SHORT).show()
+            runCatching {
+                persistImageUri(uri)
+                val stableUri = copyProfileImageToAppStorage(uri, pendingPhotoTarget)
+                val updated = when (pendingPhotoTarget) {
+                    PhotoTarget.PROFILE -> user.copy(photoUrl = stableUri.toString())
+                    PhotoTarget.CAR -> user.copy(carPhotoUrl = stableUri.toString())
                 }
-                .onFailure { e ->
-                    Toast.makeText(requireContext(), "Could not save photo: ${e.message}", Toast.LENGTH_LONG).show()
-                }
+                userRepo.updateProfile(updated)
+                updated
+            }.onSuccess { updated ->
+                currentProfile = updated
+                bindImages(requireView(), updated)
+                Toast.makeText(requireContext(), "Photo saved", Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                Toast.makeText(requireContext(), "Could not save photo: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun persistImageUri(uri: Uri) {
+        runCatching {
+            requireContext().contentResolver.takePersistableUriPermission(
+                uri,
+                FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+    }
+
+    private fun copyProfileImageToAppStorage(uri: Uri, target: PhotoTarget): Uri {
+        val userId = currentProfile?.uid?.ifBlank { "current" } ?: "current"
+        val safeUserId = userId.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        val extension = extensionForUri(uri)
+        val fileName = when (target) {
+            PhotoTarget.PROFILE -> "${safeUserId}_profile$extension"
+            PhotoTarget.CAR -> "${safeUserId}_car$extension"
+        }
+        val imageDir = java.io.File(requireContext().filesDir, "profile_images").apply { mkdirs() }
+        val dest = java.io.File(imageDir, fileName)
+        requireContext().contentResolver.openInputStream(uri).use { input ->
+            requireNotNull(input) { "Could not open selected image" }
+            dest.outputStream().use { output -> input.copyTo(output) }
+        }
+        return Uri.fromFile(dest)
+    }
+
+    private fun extensionForUri(uri: Uri): String {
+        val fromName = runCatching {
+            requireContext().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
+        val dotExtension = fromName
+            ?.substringAfterLast('.', missingDelimiterValue = "")
+            ?.takeIf { it.length in 1..5 && it.all { ch -> ch.isLetterOrDigit() } }
+            ?.let { ".$it" }
+        if (dotExtension != null) return dotExtension
+
+        return when (requireContext().contentResolver.getType(uri)) {
+            "image/png" -> ".png"
+            "image/webp" -> ".webp"
+            "image/gif" -> ".gif"
+            else -> ".jpg"
         }
     }
 
@@ -89,19 +142,20 @@ class ProfileFragment : Fragment() {
         btnCarPhoto.visibility = if (isOwnProfile) View.VISIBLE else View.GONE
         btnProfilePhoto.setOnClickListener {
             pendingPhotoTarget = PhotoTarget.PROFILE
-            pickImage.launch("image/*")
+            pickImage.launch(arrayOf("image/*"))
         }
         btnCarPhoto.setOnClickListener {
             pendingPhotoTarget = PhotoTarget.CAR
-            pickImage.launch("image/*")
+            pickImage.launch(arrayOf("image/*"))
         }
 
         if (session.forceDemoMode && isOwnProfile) {
-            val demoUser = if (session.role == SessionManager.ROLE_DRIVER) {
+            val defaultDemoUser = if (session.role == SessionManager.ROLE_DRIVER) {
                 User(uid = DemoRequestStore.DEMO_DRIVER_ID, displayName = DemoRequestStore.DEMO_DRIVER_NAME, email = "demo_driver@demo.app", driver = true, rating = 4.8, ratingCount = 36, vehicleType = VehicleType.SEDAN, vehiclePlate = "DEMO-01")
             } else {
                 User(uid = DemoRequestStore.DEMO_CLIENT_ID, displayName = DemoRequestStore.DEMO_CLIENT_NAME, email = "demo_client@demo.app", driver = false, rating = 4.9, ratingCount = 12)
             }
+            val demoUser = DemoRideStore.getUser(defaultDemoUser.uid) ?: defaultDemoUser
             bindProfile(demoUser, tvName, tvEmail, tvRole, tvBalance, tvRatingSummary, tvHistogram, tvVehicles)
             bindImages(view, demoUser)
             observeReviews(demoUser.uid, tvComments, tvRatingSummary, tvHistogram)
