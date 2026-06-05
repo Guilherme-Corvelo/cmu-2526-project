@@ -211,6 +211,9 @@ object DemoRideStore {
     fun completeRide(rideId: String) {
         val now = Date()
         val currentBookings = bookingsFlow.value.filter { it.rideId == rideId }
+        if (currentBookings.any { it.status == BookingStatus.ACCEPTED || it.status == BookingStatus.EN_ROUTE }) {
+            throw IllegalStateException("All passengers must confirm pickup before the ride can be finished.")
+        }
         
         ridesFlow.value = ridesFlow.value.map { ride ->
             if (ride.id == rideId) {
@@ -240,9 +243,7 @@ object DemoRideStore {
                     // Handle bookings
                     bookingsFlow.value = bookingsFlow.value.map { booking ->
                         if (booking.rideId == rideId) {
-                            val isActive = booking.status == BookingStatus.ACCEPTED || 
-                                           booking.status == BookingStatus.PICKED_UP || 
-                                           booking.status == BookingStatus.EN_ROUTE
+                            val isActive = booking.status == BookingStatus.PICKED_UP
                             
                             val updated = if (isActive) {
                                 // Driver gets paid upon completion in demo
@@ -294,9 +295,7 @@ object DemoRideStore {
                     // Non-periodic: just complete bookings
                     bookingsFlow.value = bookingsFlow.value.map { booking ->
                         if (booking.rideId == rideId) {
-                            val isActive = booking.status == BookingStatus.ACCEPTED || 
-                                           booking.status == BookingStatus.PICKED_UP || 
-                                           booking.status == BookingStatus.EN_ROUTE
+                            val isActive = booking.status == BookingStatus.PICKED_UP
                             
                             if (isActive) {
                                 if (!booking.driverPaid) {
@@ -415,11 +414,11 @@ object DemoRideStore {
                 // State machine validation
                 val current = booking.status
                 val valid = when (status) {
-                    BookingStatus.ACCEPTED -> current == BookingStatus.PENDING
-                    BookingStatus.REJECTED -> current == BookingStatus.PENDING || current == BookingStatus.REJECTED
-                    BookingStatus.EN_ROUTE -> current == BookingStatus.ACCEPTED
-                    BookingStatus.PICKED_UP -> current == BookingStatus.EN_ROUTE
-                    BookingStatus.COMPLETED -> current == BookingStatus.PICKED_UP || current == BookingStatus.ACCEPTED || current == BookingStatus.EN_ROUTE || current == BookingStatus.COMPLETED
+                    BookingStatus.ACCEPTED -> current == BookingStatus.PENDING && currentUid == booking.driverId
+                    BookingStatus.REJECTED -> (current == BookingStatus.PENDING || current == BookingStatus.REJECTED) && currentUid == booking.driverId
+                    BookingStatus.EN_ROUTE -> current == BookingStatus.ACCEPTED && currentUid == booking.driverId
+                    BookingStatus.PICKED_UP -> current == BookingStatus.EN_ROUTE && currentUid == booking.passengerId
+                    BookingStatus.COMPLETED -> (current == BookingStatus.PICKED_UP || current == BookingStatus.COMPLETED) && currentUid == booking.driverId
                     BookingStatus.CANCELLED -> (current != BookingStatus.COMPLETED && current != BookingStatus.REJECTED) || current == BookingStatus.CANCELLED
                     else -> false
                 }
