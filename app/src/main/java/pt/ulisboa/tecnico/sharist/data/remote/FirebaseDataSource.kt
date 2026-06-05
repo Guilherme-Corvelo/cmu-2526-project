@@ -698,10 +698,11 @@ class FirebaseDataSource(
             }
             if (!valid) return@runTransaction
 
-            // Reschedule logic for periodic requests. Completing a passenger-created
-            // periodic ride should immediately publish the next occurrence so the
-            // driver can finish the current one without ending the recurring series.
-            if (req.periodic && (status == RequestStatus.COMPLETED || (reschedule && status == RequestStatus.CANCELLED))) {
+            // Reschedule logic for periodic requests cancelled by the passenger/system.
+            // Completed passenger-created periodic requests publish their next
+            // occurrence after the driver reviews the passenger in submitReview(),
+            // so the old completed request stays available for post-ride review.
+            if (req.periodic && reschedule && status == RequestStatus.CANCELLED) {
                 val nextRef = requestsCol.document()
                 val nextDate = calculateNextOccurrence(req.requestedTime, req.periodicLabel)
                 val nextReq = req.copy(
@@ -717,6 +718,8 @@ class FirebaseDataSource(
                     driverPaid = false,
                     driverReviewed = false,
                     passengerReviewed = false,
+                    deniedBy = emptyList(),
+                    deniedDrivers = emptyList(),
                     createdAt = null
                 )
                 tx.set(nextRef, nextReq)
@@ -738,7 +741,7 @@ class FirebaseDataSource(
                 tx.update(ref, "lateCancellationPenaltyApplied", true)
             }
 
-            if (status == RequestStatus.COMPLETED) {
+            if (status == RequestStatus.COMPLETED && !req.periodic) {
                 tx.update(ref, "origin", "anonymized")
                 tx.update(ref, "destination", "anonymized")
             }
@@ -915,7 +918,38 @@ class FirebaseDataSource(
             }
 
             if (docToUpdate != null && fieldToUpdate != null) {
-                tx.update(docToUpdate, fieldToUpdate, true)
+                if (docToUpdate == reqRef && fieldToUpdate == "passengerReviewed") {
+                    val req = reqSnap.toObject(RideRequest::class.java)
+                    if (req?.periodic == true && req.status == RequestStatus.COMPLETED && uid == req.driverId) {
+                        val nextRef = requestsCol.document()
+                        val nextReq = req.copy(
+                            id = nextRef.id,
+                            status = RequestStatus.OPEN,
+                            requestedTime = calculateNextOccurrence(req.requestedTime, req.periodicLabel),
+                            previousRequestId = req.id,
+                            driverId = null,
+                            hashedDriverId = "",
+                            driverName = null,
+                            driverRating = 5.0,
+                            passengerPaid = false,
+                            passengerRefunded = false,
+                            driverPaid = false,
+                            driverReviewed = false,
+                            passengerReviewed = false,
+                            deniedBy = emptyList(),
+                            deniedDrivers = emptyList(),
+                            createdAt = null
+                        )
+                        tx.set(nextRef, nextReq)
+                        tx.update(docToUpdate, fieldToUpdate, true)
+                        tx.update(docToUpdate, "origin", "anonymized")
+                        tx.update(docToUpdate, "destination", "anonymized")
+                    } else {
+                        tx.update(docToUpdate, fieldToUpdate, true)
+                    }
+                } else {
+                    tx.update(docToUpdate, fieldToUpdate, true)
+                }
             }
         }.await()
         

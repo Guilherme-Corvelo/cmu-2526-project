@@ -97,19 +97,49 @@ object DemoRideStore {
             users[review.driverId] = user.copy(rating = newRating, ratingCount = newCount)
         }
 
-        // Update the reviewed status on the request or booking
-        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
-            if (it.id == review.requestId) {
-                if (it.driverId == review.passengerId) it.copy(driverReviewed = true)
-                else it.copy(passengerReviewed = true)
-            } else it
+        // Update the reviewed status on the request or booking. When a driver
+        // reviews a completed periodic client request, publish the next occurrence
+        // while keeping the completed request for review history.
+        var nextPeriodicRequest: RideRequest? = null
+        DemoRequestStore.requests.value = DemoRequestStore.requests.value.map { request ->
+            if (request.id == review.requestId) {
+                val driverIsReviewer = request.driverId == review.passengerId
+                if (driverIsReviewer && request.periodic && request.status == RequestStatus.COMPLETED) {
+                    nextPeriodicRequest = request.copy(
+                        id = "demo_req_${UUID.randomUUID()}",
+                        status = RequestStatus.OPEN,
+                        requestedTime = calculateNextOccurrence(request.requestedTime, request.periodicLabel),
+                        previousRequestId = request.id,
+                        driverId = null,
+                        hashedDriverId = "",
+                        driverName = null,
+                        driverRating = 5.0,
+                        passengerPaid = false,
+                        passengerRefunded = false,
+                        driverPaid = false,
+                        driverReviewed = false,
+                        passengerReviewed = false,
+                        deniedBy = emptyList(),
+                        deniedDrivers = emptyList(),
+                        createdAt = Date()
+                    )
+                    request.copy(passengerReviewed = true, origin = "anonymized", destination = "anonymized")
+                } else if (driverIsReviewer) {
+                    request.copy(passengerReviewed = true)
+                } else {
+                    request.copy(driverReviewed = true)
+                }
+            } else request
+        }
+        nextPeriodicRequest?.let { nextRequest ->
+            DemoRequestStore.requests.value = DemoRequestStore.requests.value + nextRequest
         }
 
-        bookingsFlow.value = bookingsFlow.value.map {
-            if (it.id == review.requestId) {
-                if (it.driverId == review.passengerId) it.copy(driverReviewed = true)
-                else it.copy(passengerReviewed = true)
-            } else it
+        bookingsFlow.value = bookingsFlow.value.map { booking ->
+            if (booking.id == review.requestId) {
+                if (booking.driverId == review.passengerId) booking.copy(passengerReviewed = true)
+                else booking.copy(driverReviewed = true)
+            } else booking
         }.toMutableList()
     }
 

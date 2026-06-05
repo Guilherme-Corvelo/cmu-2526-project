@@ -45,9 +45,21 @@ service cloud.firestore {
 
     match /ride_requests/{requestId} {
       allow read: if request.auth != null;
-      // Passenger can create a request
-      allow create: if request.auth != null &&
-                     request.resource.data.passengerId == request.auth.uid;
+      // Passenger can create a request. A driver who completed a periodic
+      // passenger request may publish the next occurrence only when it points
+      // back to that completed request.
+      allow create: if request.auth != null && (
+        request.resource.data.passengerId == request.auth.uid ||
+        (request.resource.data.periodic == true &&
+         request.resource.data.status == "OPEN" &&
+         request.resource.data.driverId == null &&
+         request.resource.data.previousRequestId is string &&
+         exists(/databases/$(database)/documents/ride_requests/$(request.resource.data.previousRequestId)) &&
+         get(/databases/$(database)/documents/ride_requests/$(request.resource.data.previousRequestId)).data.periodic == true &&
+         get(/databases/$(database)/documents/ride_requests/$(request.resource.data.previousRequestId)).data.status == "COMPLETED" &&
+         get(/databases/$(database)/documents/ride_requests/$(request.resource.data.previousRequestId)).data.driverId == request.auth.uid &&
+         get(/databases/$(database)/documents/ride_requests/$(request.resource.data.previousRequestId)).data.passengerId == request.resource.data.passengerId)
+      );
       // Involved parties (or any driver for OPEN requests) can update status
       allow update: if request.auth != null && (
         resource.data.passengerId == request.auth.uid ||

@@ -171,26 +171,11 @@ class RideDetailViewModel(
     fun finishRide(rideId: String) {
         viewModelScope.launch {
             _bookingState.value = BookingState.Loading
-            try {
-                // To finish a ride, we need to finish all bookings and the ride itself
-                val bookings = rideRepo.getRideBookings(rideId).first()
-                bookings.forEach { booking ->
-                    if (booking.status == BookingStatus.ACCEPTED || booking.status == BookingStatus.EN_ROUTE || booking.status == BookingStatus.PICKED_UP) {
-                        rideRepo.updateBookingStatus(booking.id, BookingStatus.COMPLETED)
-                    } else if (booking.status == BookingStatus.PENDING) {
-                        // Reject pending bookings if finishing the ride
-                        rideRepo.updateBookingStatus(booking.id, BookingStatus.REJECTED)
-                    }
-                }
-                
-                rideRepo.completeRide(rideId).onSuccess {
-                    _ride.value = _ride.value?.copy(status = RideStatus.COMPLETED)
-                    _bookingState.value = BookingState.Success("completed", false)
-                }.onFailure {
-                    _bookingState.value = BookingState.Error(it.message ?: "Finish failed")
-                }
-            } catch (e: Exception) {
-                _bookingState.value = BookingState.Error(e.message ?: "An error occurred while finishing the ride")
+            rideRepo.completeRide(rideId).onSuccess {
+                _ride.value = _ride.value?.copy(status = RideStatus.COMPLETED)
+                _bookingState.value = BookingState.Success("completed", false)
+            }.onFailure {
+                _bookingState.value = BookingState.Error(it.message ?: "Finish failed")
             }
         }
     }

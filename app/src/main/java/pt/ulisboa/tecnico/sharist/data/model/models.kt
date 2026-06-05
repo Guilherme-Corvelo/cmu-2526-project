@@ -60,6 +60,7 @@ data class RideRequest(
     val timeToleranceAfter: Int = 15, // in minutes
     val periodic: Boolean = false,
     val periodicLabel: String = "", // "Daily", "Weekly", etc.
+    val previousRequestId: String = "",
     val estimatedPrice: Double = 0.0,
     val driverId: String? = null,
     val hashedDriverId: String = "",
