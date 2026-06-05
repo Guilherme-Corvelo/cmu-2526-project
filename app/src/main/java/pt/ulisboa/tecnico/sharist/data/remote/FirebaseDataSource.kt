@@ -703,13 +703,19 @@ class FirebaseDataSource(
             }
 
             // 2. ALL WRITES
-            // Special case: Driver cancels an accepted request -> Reset to OPEN
+            // Special case: Driver cancels an accepted request -> release it back to the
+            // open request pool for other drivers, while hiding it from this driver.
             if (status == RequestStatus.CANCELLED && uid == req.driverId && req.driverId != null) {
+                val updatedDeniedBy = req.deniedBy.toMutableList()
+                if (uid != null && !updatedDeniedBy.contains(uid)) {
+                    updatedDeniedBy.add(uid)
+                }
                 tx.update(ref, "status", RequestStatus.OPEN.name)
                 tx.update(ref, "driverId", null)
                 tx.update(ref, "hashedDriverId", "")
                 tx.update(ref, "driverName", null)
                 tx.update(ref, "driverRating", 5.0)
+                tx.update(ref, "deniedBy", updatedDeniedBy)
                 return@runTransaction
             }
 
@@ -775,7 +781,8 @@ class FirebaseDataSource(
         }.await()
 
         if (status == RequestStatus.CANCELLED) {
-            deleteSyntheticRequestBookingsForCurrentUser(requestId)
+            runCatching { deleteSyntheticRequestBookingsForCurrentUser(requestId) }
+                .onFailure { android.util.Log.w("FirebaseDataSource", "Synthetic request booking cleanup failed for $requestId", it) }
         }
     }
 

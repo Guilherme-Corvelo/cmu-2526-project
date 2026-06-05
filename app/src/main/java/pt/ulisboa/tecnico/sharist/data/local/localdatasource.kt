@@ -19,6 +19,9 @@ interface RideRequestDao {
     @Query("SELECT * FROM requests_cache WHERE driverId = :uid ORDER BY requestedTimeMs DESC")
     fun observeDriverRequests(uid: String): Flow<List<RideRequestEntity>>
 
+    @Query("DELETE FROM requests_cache WHERE driverId = :uid AND isPending = 0")
+    suspend fun deleteSyncedDriverRequests(uid: String)
+
     @Query("SELECT * FROM requests_cache WHERE passengerId = :uid AND status IN ('OPEN', 'ACCEPTED', 'EN_ROUTE', 'PICKED_UP')")
     suspend fun getActivePassengerRequests(uid: String): List<RideRequestEntity>
 
