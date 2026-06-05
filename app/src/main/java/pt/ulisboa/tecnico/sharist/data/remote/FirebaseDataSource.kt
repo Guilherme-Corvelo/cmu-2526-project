@@ -714,7 +714,7 @@ class FirebaseDataSource(
                     hashedDriverId = "",
                     driverName = null,
                     driverRating = 5.0,
-                    passengerPaid = false,
+                    passengerPaid = req.passengerPaid,
                     passengerRefunded = false,
                     driverPaid = false,
                     driverReviewed = false,
@@ -815,8 +815,10 @@ class FirebaseDataSource(
             if (req.status != RequestStatus.OPEN) error("Request already taken")
 
             val passengerId = req.passengerId ?: "unknown"
+            val isGeneratedPeriodicRequest = req.periodic && req.previousRequestId.isNotBlank()
+            val requestIsPrepaid = req.passengerPaid || isGeneratedPeriodicRequest
             var passengerToCharge: Pair<DocumentReference, Double>? = null
-            if (!req.passengerPaid && passengerId != "unknown") {
+            if (!requestIsPrepaid && passengerId != "unknown") {
                 val pRef = usersCol.document(passengerId)
                 val pBal = tx.get(pRef).getDouble("balance") ?: 0.0
                 if (pBal < req.estimatedPrice) error("Passenger has insufficient balance")
@@ -839,6 +841,8 @@ class FirebaseDataSource(
                 departureTime = req.requestedTime,
                 driverName = driverName,
                 driverId = driverId,
+                passengerPaid = requestIsPrepaid,
+                passengerRefunded = false,
                 weatherCondition = req.weatherCondition
             )
             
@@ -851,6 +855,12 @@ class FirebaseDataSource(
             )
             if (passengerToCharge != null) {
                 tx.update(passengerToCharge.first, "balance", passengerToCharge.second - req.estimatedPrice)
+                requestUpdates["passengerPaid"] = true
+                requestUpdates["passengerRefunded"] = false
+            } else if (isGeneratedPeriodicRequest && !req.passengerPaid) {
+                // Match recurring bookings: generated periodic occurrences carry
+                // the existing payment commitment forward, so a driver accepting
+                // one must not try to debit the passenger's balance.
                 requestUpdates["passengerPaid"] = true
                 requestUpdates["passengerRefunded"] = false
             }
@@ -980,7 +990,7 @@ class FirebaseDataSource(
             hashedDriverId = "",
             driverName = null,
             driverRating = 5.0,
-            passengerPaid = false,
+            passengerPaid = req.passengerPaid,
             passengerRefunded = false,
             driverPaid = false,
             driverReviewed = false,

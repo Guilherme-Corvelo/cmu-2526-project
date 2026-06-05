@@ -114,7 +114,7 @@ object DemoRideStore {
                         hashedDriverId = "",
                         driverName = null,
                         driverRating = 5.0,
-                        passengerPaid = false,
+                        passengerPaid = request.passengerPaid,
                         passengerRefunded = false,
                         driverPaid = false,
                         driverReviewed = false,

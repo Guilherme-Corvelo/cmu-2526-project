@@ -252,7 +252,8 @@ class MockRemoteDataSource : RemoteDataSource {
     override suspend fun acceptRequest(requestId: String, driverId: String, driverName: String, driverRating: Double) {
         DemoRequestStore.requests.value = DemoRequestStore.requests.value.map {
             if (it.id == requestId && it.status == RequestStatus.OPEN) {
-                if (!it.passengerPaid && it.passengerId != null) {
+                val isGeneratedPeriodicRequest = it.periodic && it.previousRequestId.isNotBlank()
+                if (!it.passengerPaid && !isGeneratedPeriodicRequest && it.passengerId != null) {
                     DemoRideStore.updateBalance(it.passengerId, -it.estimatedPrice)
                 }
                 it.copy(
